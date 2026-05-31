@@ -1,0 +1,28 @@
+# Data files (large CSVs, generated)
+data/processed/
+data/raw/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# Model checkpoints & weights
+checkpoints/
+model-weights/
+*.safetensors
+*.bin
+*.pth
+
+# Cache
+.cache/
+*.arrow
+
+# IDE
+.vscode/
+.idea/
+
+# Environment
+.env
+.venv/

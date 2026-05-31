@@ -1,0 +1,22 @@
+🚀 开始为 6467 条终极大一统数据进行满血版 VEP 注释...
+Smartmatch is experimental at /gpfs/hpc/home/lijc/mapengtao/.conda/envs/gof/share/ensembl-vep-110.1-0/modules/Bio/EnsEMBL/VEP/AnnotationSource/File.pm line 472.
+Use of uninitialized value $readme_file in concatenation (.) or string at /gpfs/hpc/home/lijc/mapengtao/.conda/envs/gof/share/ensembl-vep-110.1-0/dbNSFP.pm line 253.
+WARNING: Line 138 skipped (1 54594950 1_54594950_-_GT - GT . . LABEL=GOF;...): Alleles look like an insertion (-/GT) but coordinates are not start = end + 1 (START=54594950, END=54594950) for variant (1_54594950_-_GT) 
+WARNING: Line 173 skipped (1 55063514 1_55063514_-_C - C . . LABEL=GOF;GE...): Alleles look like an insertion (-/C) but coordinates are not start = end + 1 (START=55063514, END=55063514) for variant (1_55063514_-_C) 
+WARNING: Line 509 skipped (1 247285432 1_247285432_-_T - T . . LABEL=GOF;...): Alleles look like an insertion (-/T) but coordinates are not start = end + 1 (START=247285432, END=247285432) for variant (1_247285432_-_T) 
+2026-05-18 14:29:48 - INFO: BAM-edited cache detected, enabling --use_transcript_ref; use --use_given_ref to override this
+WARNING: Line 1527 skipped (3 147413421 3_147413421_-_CACCATCGTG - CACCATC...): Alleles look like an insertion (-/CACCATCGTG) but coordinates are not start = end + 1 (START=147413421, END=147413421) for variant (3_147413421_-_CACCATCGTG) 
+WARNING: Line 2096 skipped (6 90552183 6_90552183_-_TACTAC - TACTAC . . LA...): Alleles look like an insertion (-/TACTAC) but coordinates are not start = end + 1 (START=90552183, END=90552183) for variant (6_90552183_-_TACTAC) 
+WARNING: Line 2102 skipped (6 104512249 6_104512249_-_G - G . . LABEL=GOF;...): Alleles look like an insertion (-/G) but coordinates are not start = end + 1 (START=104512249, END=104512249) for variant (6_104512249_-_G) 
+WARNING: Line 2226 skipped (7 34738889 7_34738889_-_T - T . . LABEL=GOF;GE...): Alleles look like an insertion (-/T) but coordinates are not start = end + 1 (START=34738889, END=34738889) for variant (7_34738889_-_T) 
+WARNING: Line 2666 skipped (8 117172544 8_117172544_-_T - T . . LABEL=GOF;...): Alleles look like an insertion (-/T) but coordinates are not start = end + 1 (START=117172544, END=117172544) for variant (8_117172544_-_T) 
+WARNING: Line 2807 skipped (9 96391323 9_96391323_-_T - T . . LABEL=GOF;GE...): Alleles look like an insertion (-/T) but coordinates are not start = end + 1 (START=96391323, END=96391323) for variant (9_96391323_-_T) 
+WARNING: Line 3160 skipped (10 119724704 10_119724704_-_C - C . . LABEL=GO...): Alleles look like an insertion (-/C) but coordinates are not start = end + 1 (START=119724704, END=119724704) for variant (10_119724704_-_C) 
+WARNING: Line 3162 skipped (10 119759888 10_119759888_-_T - T . . LABEL=GO...): Alleles look like an insertion (-/T) but coordinates are not start = end + 1 (START=119759888, END=119759888) for variant (10_119759888_-_T) 
+WARNING: Line 3163 skipped (10 119807620 10_119807620_-_T - T . . LABEL=GO...): Alleles look like an insertion (-/T) but coordinates are not start = end + 1 (START=119807620, END=119807620) for variant (10_119807620_-_T) 
+WARNING: Line 3165 skipped (10 121485484 10_121485484_-_TC - TC . . LABEL=...): Alleles look like an insertion (-/TC) but coordinates are not start = end + 1 (START=121485484, END=121485484) for variant (10_121485484_-_TC) 
+WARNING: Line 3186 skipped (11 1198765 11_1198765_-_T - T . . LABEL=GOF;GE...): Alleles look like an insertion (-/T) but coordinates are not start = end + 1 (START=1198765, END=1198765) for variant (11_1198765_-_T) 
+WARNING: Line 4254 skipped (14 50628159 14_50628159_-_AAT - AAT . . LABEL=...): Alleles look like an insertion (-/AAT) but coordinates are not start = end + 1 (START=50628159, END=50628159) for variant (14_50628159_-_AAT) 
+WARNING: Line 5765 skipped (19 41352971 19_41352971_-_T - T . . LABEL=GOF;...): Alleles look like an insertion (-/T) but coordinates are not start = end + 1 (START=41352971, END=41352971) for variant (19_41352971_-_T) 
+WARNING: Line 5895 skipped (20 63350634 20_63350634_-_AGC - AGC . . LABEL=...): Alleles look like an insertion (-/AGC) but coordinates are not start = end + 1 (START=63350634, END=63350634) for variant (20_63350634_-_AGC) 
+🎉 终极 VEP 数据特征库已全部构建完毕！
