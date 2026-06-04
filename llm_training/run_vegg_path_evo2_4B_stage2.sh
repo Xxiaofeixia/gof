@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH -J BioReason_S1
+#SBATCH -J BioReason_S2
 #SBATCH -p GPU3
 #SBATCH --gres=gpu:1
 #SBATCH --qos=normal
@@ -32,7 +32,7 @@ nvidia-smi
 echo "====================================="
 
 python train_dna_qwen_vegg.py \
-    --stage 1 \
+    --stage 2 \
     --text_model_name $TEXT_MODEL \
     --dna_model_name $DNA_MODEL \
     --dna_is_evo2 True \

@@ -271,7 +271,7 @@ class DNALLMFineTuner(pl.LightningModule):
                 lora_alpha=self.lora_alpha,     # LoRA 缩放因子, 实际学习率 = alpha/r
                 lora_dropout=self.lora_dropout,
                 target_modules=target_modules,  # 对哪些层加 LoRA (q_proj, v_proj 等)
-                init_lora_weights=True,
+                init_lora_weights="gaussian",
                 bias="none",                    # bias 不训练
                 task_type="CAUSAL_LM",          # 因果语言模型任务
             )
@@ -584,9 +584,15 @@ class DNALLMFineTuner(pl.LightningModule):
             # 这是我们用的数据集类型!!!
             # ═══════════════════════════════════════════════════════════════════
             #
-            # Step 1: 加载 CSV 文件
-            #   CSV 列: reference_sequence, variant_sequence, question, answer
-            dataset = load_dataset("csv", data_files="/gpfs/hpc/home/lijc/mapengtao/gof/data/processed/BioReason_protein_LLM_Ready.csv")
+            # Step 1: 加载 CSV 文件 (根据 --stage 选择数据集)
+            #   Stage 1: BioReason_protein_Stage1_Binary.csv (Pathogenic vs Benign)
+            #   Stage 2: BioReason_protein_Stage2_GOF_LOF.csv (GOF vs LOF)
+            stage = getattr(self.hparams, "stage", 1)
+            if stage == 1:
+                data_file = "/gpfs/hpc/home/lijc/mapengtao/gof/data/processed/BioReason_protein_Stage1_Binary.csv"
+            else:
+                data_file = "/gpfs/hpc/home/lijc/mapengtao/gof/data/processed/BioReason_protein_Stage2_GOF_LOF.csv"
+            dataset = load_dataset("csv", data_files=data_file)
 
             # Step 2: 清洗 + 格式化
             #   clean:           answer.strip() — 去掉首尾空格
@@ -598,18 +604,31 @@ class DNALLMFineTuner(pl.LightningModule):
             raw_data = formatted["train"]
             labels = [example["answer"] for example in raw_data]
 
-            # Step 4: 80/10/10 分割
-            #   split_1: 80% train, 20% temp
-            #   split_2: temp 再分成 10% val, 10% test
-            split_1 = raw_data.train_test_split(test_size=0.2, seed=42)
-            split_2 = split_1["test"].train_test_split(test_size=0.5, seed=42)
-
-            if split == "train":
-                raw = split_1["train"]
-            elif split == "val":
-                raw = split_2["train"]
-            else:  # test
-                raw = split_2["test"]
+            # Step 4: 分割 (Stage2 做基因感知分割)
+            stage = getattr(self.hparams, "stage", 1)
+            if stage == 2 and "gene_type" in raw_data.column_names:
+                # 分离: 共享基因(同源) vs LOF-only 基因
+                shared_data = raw_data.filter(lambda x: x["gene_type"] == "shared")
+                lof_only_data = raw_data.filter(lambda x: x["gene_type"] == "lof_only")
+                # val/test 只从共享基因中取，train 包含全部
+                split_1 = shared_data.train_test_split(test_size=0.2, seed=42)
+                split_2 = split_1["test"].train_test_split(test_size=0.5, seed=42)
+                if split == "train":
+                    raw = concatenate_datasets([split_1["train"], lof_only_data])
+                elif split == "val":
+                    raw = split_2["train"]
+                else:
+                    raw = split_2["test"]
+            else:
+                # 原逻辑: 随机 80/10/10 分割
+                split_1 = raw_data.train_test_split(test_size=0.2, seed=42)
+                split_2 = split_1["test"].train_test_split(test_size=0.5, seed=42)
+                if split == "train":
+                    raw = split_1["train"]
+                elif split == "val":
+                    raw = split_2["train"]
+                else:
+                    raw = split_2["test"]
 
         elif dtype == "variant_effect_non_snv":
             dataset = load_dataset(self.hparams.variant_effect_non_snv_data_dir_huggingface)
@@ -811,7 +830,7 @@ class DNALLMFineTuner(pl.LightningModule):
                         })
                         example_batch_map = [0] * len(example_indices)
 
-                # 推理生成 (贪心解码: do_sample=False, 确保确定性结果)
+                # 推理生成 (对齐原始BioReason: 采样解码)
                 with torch.no_grad():
                     generated = self.model.generate(
                         input_ids=gen_input_ids,
@@ -819,7 +838,10 @@ class DNALLMFineTuner(pl.LightningModule):
                         dna_tokenized=example_dna_data,
                         batch_idx_map=example_batch_map,
                         max_new_tokens=200,
-                        do_sample=False,
+                        do_sample=True,
+                        temperature=0.6,
+                        top_p=0.95,
+                        top_k=20,
                     )
 
                 user_input = self.tokenizer.decode(
@@ -830,12 +852,10 @@ class DNALLMFineTuner(pl.LightningModule):
                 ground_truth = answer[example_idx].strip()
 
                 # ── 准确率判断 ──
-                # 只检查 </think> 之后的答案部分, 避免推理过程中偶然命中
-                if "</think>" in generation:
-                    answer_part = generation.split("</think>")[-1]
-                else:
-                    answer_part = generation
-                hit = ground_truth.lower() in answer_part.lower()
+                # 检查完整生成文本 (对齐原始BioReason逻辑)
+                if ";" in ground_truth:
+                    ground_truth = ground_truth.split(";")[0]
+                hit = ground_truth.lower() in generation.lower()
                 total_examples += 1
                 examples_in_batch += 1
                 if hit:
@@ -1056,9 +1076,9 @@ def main(args: ArgumentParser):
     # bf16-mixed 精度下使用 medium 矩阵乘法精度 (更快)
     torch.set_float32_matmul_precision("medium")
 
-    # 构建 run name 和 checkpoint 目录
+    # 构建 run name 和 checkpoint 目录 (含 stage 标识)
     run_name = (f"{args.wandb_project}-{args.dataset_type}"
-                f"-{args.text_model_name.split('/')[-1]}")
+                f"-stage{args.stage}-{args.text_model_name.split('/')[-1]}")
     args.checkpoint_dir = (f"{args.checkpoint_dir}/{run_name}"
                            f"-{time.strftime('%Y%m%d-%H%M%S')}")
 
@@ -1184,6 +1204,8 @@ if __name__ == "__main__":
     parser.add_argument("--variant_effect_non_snv_data_dir_huggingface", type=str,
                         default="wanglab/variant_effect_non_snv")
     parser.add_argument("--merge_val_test_set", type=bool, default=False)
+    parser.add_argument("--stage", type=int, default=1, choices=[1, 2],
+                        help="1=阶段一(Pathogenic vs Benign), 2=阶段二(GOF vs LOF)")
 
     # ── Logging 参数 ──
     parser.add_argument("--wandb_project", type=str, default="nt-500m-qwen3-1.7b-finetune")
