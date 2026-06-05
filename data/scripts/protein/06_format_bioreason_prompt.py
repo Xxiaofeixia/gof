@@ -107,6 +107,7 @@ bioreason_data = {
     "answer": [],
     "reference_sequence": [],
     "variant_sequence": [],
+    "gene_type": [],
 }
 
 print(f"⏳ 正在构建阶段{STAGE} prompt (动态特征筛选)...")
@@ -298,6 +299,10 @@ for idx, row in df.iterrows():
     var_seq = str(row.get("variant_sequence", "N"))
     bioreason_data["reference_sequence"].append(ref_seq)
     bioreason_data["variant_sequence"].append(var_seq)
+
+    # --- 基因类型 (用于训练时基因感知分割) ---
+    gene_type = str(row.get("GENE_TYPE", "shared"))
+    bioreason_data["gene_type"].append(gene_type)
 
 # ==========================================
 # 7. 导出

@@ -57,7 +57,7 @@ df_vep.drop(columns=['_sort_key'], inplace=True, errors='ignore')
 print("🔗 正在缝合 GOF/LOF/Neutral 绝对标签...")
 df_labels = pd.read_csv(RAW_LABELS_CSV)
 # 通过变异的身份证(ID)将 VEP 特征和原始标签完美拼合
-df = pd.merge(df_vep, df_labels[['ID', 'LABEL', 'REF']], on='ID', how='inner')
+df = pd.merge(df_vep, df_labels[['ID', 'LABEL', 'REF', 'GENE_TYPE']], on='ID', how='inner')
 
 # --- 4. 锁定大模型专属“王牌特征” ---
 # 有些列如果在 VEP 里没跑出来，咱们也不报错，智能跳过
@@ -68,7 +68,10 @@ TARGET_COLS = [
     'GERP++_RS', 'phyloP100way_vertebrate'
 ]
 actual_cols = [col for col in TARGET_COLS if col in df.columns]
-df = df[actual_cols + (['REF'] if 'REF' not in actual_cols else [])].copy()
+extra_cols = ['REF'] if 'REF' not in actual_cols else []
+if 'GENE_TYPE' in df.columns:
+    extra_cols.append('GENE_TYPE')
+df = df[actual_cols + extra_cols].copy()
 
 # --- 5. 空值清洗 (防止模型作弊) ---
 print("🛡️ 正在清理特征空值，执行数值化转换...")

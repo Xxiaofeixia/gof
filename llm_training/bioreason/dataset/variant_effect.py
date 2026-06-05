@@ -147,7 +147,7 @@ def format_variant_effect_for_dna_llm(example: Dict[str, Any]) -> Dict[str, Any]
             # 助手消息: 模型需要学习的回复
             {
                 "role": "assistant",
-                "reasoning_content": f"Answer: {example['answer'].strip()}",  # 推理过程/答案
+                "reasoning_content": f" {example['answer'].strip()}",  # 推理过程
                 "content": [
                     {"type": "text", "text": f"Answer: {example['answer'].strip()}"},  # 最终答案
                 ],
@@ -195,7 +195,7 @@ def format_variant_effect_for_llm(example: Dict[str, Any]) -> Dict[str, Any]:
             },
             {
                 "role": "assistant",
-                "reasoning_content": f"{example['answer'].strip()}",
+                "reasoning_content": f" {example['answer'].strip()}",
                 "content": [
                     {"type": "text", "text": f"Answer: {example['answer'].strip()}"},
                 ],

@@ -54,7 +54,7 @@ for _, row in df_gofcards.iterrows():
     res = lo.convert_coordinate(f"chr{chrom}", int(row['hg19start']))
     if res:
         cid = f"{chrom}_{res[0][1]}_{str(row['ref']).upper()}_{str(row['alt']).upper()}"
-        raw_gof_dict[cid] = {'CHROM': chrom, 'POS': res[0][1], 'ID': cid, 'REF': str(row['ref']).upper(), 'ALT': str(row['alt']).upper(), 'Gene': str(row.iloc[1]).strip(), 'LABEL': 'GOF'}
+        raw_gof_dict[cid] = {'CHROM': chrom, 'POS': res[0][1], 'ID': cid, 'REF': str(row['ref']).upper(), 'ALT': str(row['alt']).upper(), 'Gene': str(row.iloc[1]).strip(), 'LABEL': 'GOF', 'GENE_TYPE': 'shared'}
 
 df_clinvar = pd.read_csv(CLINVAR_CSV)
 col_map = {'CHROM': 'Chromosome', 'POS': 'PositionVCF', 'REF': 'ReferenceAlleleVCF', 'ALT': 'AlternateAlleleVCF', 'GENE': 'GeneSymbol'}
@@ -65,18 +65,18 @@ for _, row in df_clinvar[df_clinvar['LABEL'] == 'GOF'].iterrows():
     res = lo.convert_coordinate(f"chr{chrom}", int(row['PositionVCF']))
     if res:
         cid = f"{chrom}_{res[0][1]}_{str(row['ReferenceAlleleVCF']).upper()}_{str(row['AlternateAlleleVCF']).upper()}"
-        raw_gof_dict[cid] = {'CHROM': chrom, 'POS': res[0][1], 'ID': cid, 'REF': str(row['ReferenceAlleleVCF']).upper(), 'ALT': str(row['AlternateAlleleVCF']).upper(), 'Gene': str(row.get('GeneSymbol', '-')), 'LABEL': 'GOF'}
+        raw_gof_dict[cid] = {'CHROM': chrom, 'POS': res[0][1], 'ID': cid, 'REF': str(row['ReferenceAlleleVCF']).upper(), 'ALT': str(row['AlternateAlleleVCF']).upper(), 'Gene': str(row.get('GeneSymbol', '-')), 'LABEL': 'GOF', 'GENE_TYPE': 'shared'}
 
-# 2.2 收集 LOF (基于标准基因)
+# 2.2 收集 LOF (全部纳入，标记是否同源)
 for _, row in df_clinvar[df_clinvar['LABEL'] == 'LOF'].iterrows():
     gene = str(row.get('GeneSymbol', '-')).strip()
-    if gene not in standard_gof_genes: continue
-    
+    gene_type = "shared" if gene in standard_gof_genes else "lof_only"
+
     chrom = str(row['Chromosome']).replace('chr', '')
     res = lo.convert_coordinate(f"chr{chrom}", int(row['PositionVCF']))
     if res:
         cid = f"{chrom}_{res[0][1]}_{str(row['ReferenceAlleleVCF']).upper()}_{str(row['AlternateAlleleVCF']).upper()}"
-        raw_lof_dict[cid] = {'CHROM': chrom, 'POS': res[0][1], 'ID': cid, 'REF': str(row['ReferenceAlleleVCF']).upper(), 'ALT': str(row['AlternateAlleleVCF']).upper(), 'Gene': gene, 'LABEL': 'LOF'}
+        raw_lof_dict[cid] = {'CHROM': chrom, 'POS': res[0][1], 'ID': cid, 'REF': str(row['ReferenceAlleleVCF']).upper(), 'ALT': str(row['AlternateAlleleVCF']).upper(), 'Gene': gene, 'LABEL': 'LOF', 'GENE_TYPE': gene_type}
 
 # ================= 3. 💥 终极对撞与双向净化 💥 =================
 conflicts = set(raw_gof_dict.keys()).intersection(set(raw_lof_dict.keys()))
@@ -112,7 +112,7 @@ try:
                         cid = f"{chrom}_{parts[1]}_{parts[3]}_{parts[4]}"
                         # 确保不与已有的致病变异(GOF/LOF/冲突)重合
                         if cid not in raw_gof_dict and cid not in raw_lof_dict:
-                            neutral_pool.append({'CHROM': chrom, 'POS': parts[1], 'ID': cid, 'REF': parts[3], 'ALT': parts[4], 'Gene': gene, 'LABEL': 'Neutral'})
+                            neutral_pool.append({'CHROM': chrom, 'POS': parts[1], 'ID': cid, 'REF': parts[3], 'ALT': parts[4], 'Gene': gene, 'LABEL': 'Neutral', 'GENE_TYPE': 'shared'})
     
     if len(neutral_pool) > 3000:
         random.seed(42)
