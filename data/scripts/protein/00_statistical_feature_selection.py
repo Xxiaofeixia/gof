@@ -28,7 +28,7 @@ warnings.filterwarnings("ignore")
 # ==========================================
 # 配置
 # ==========================================
-INPUT_CSV = "/gpfs/hpc/home/lijc/mapengtao/gof/data/processed/05_BIOREASON_with_Topology.csv"
+INPUT_CSV = "/gpfs/hpc/home/lijc/mapengtao/gof/data/processed/06_BIOREASON_with_Biochem.csv"
 OUTPUT_JSON = "/gpfs/hpc/home/lijc/mapengtao/gof/data/processed/feature_selection_result.json"
 
 # 要从 CSV 中检验的特征列及其类型
@@ -44,6 +44,12 @@ FEATURE_CONFIG = {
     "AlphaFold_RSA":             "continuous",
     "ESM_DDG_Score":             "continuous",
     "Spatial_Density_10A":       "continuous",
+    "Protein_position":          "continuous",
+    "SpliceAI_DS_max":           "continuous",
+    "MutPred_score":             "continuous",
+    "Isoelectric_diff":          "continuous",
+    "Molecular_weight":          "continuous",
+    "in_last_exon":              "categorical",
     # 分类型特征
     "Consequence":               "categorical",
     "Inheritance_Pattern":       "categorical",

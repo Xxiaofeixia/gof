@@ -66,9 +66,12 @@ DNA-LLM 多模态微调训练脚本
 import csv
 import gc
 import os
+import random
+import re
 import time
 import traceback
 from argparse import ArgumentParser
+from collections import defaultdict
 from functools import partial
 from typing import *
 
@@ -581,54 +584,116 @@ class DNALLMFineTuner(pl.LightningModule):
 
         elif dtype == "variant_effect_coding":
             # ═══════════════════════════════════════════════════════════════════
-            # 这是我们用的数据集类型!!!
-            # ═══════════════════════════════════════════════════════════════════
+            # 基因级分割 (Gene-Level Split)
             #
-            # Step 1: 加载 CSV 文件 (根据 --stage 选择数据集)
-            #   Stage 1: BioReason_protein_Stage1_Binary.csv (Pathogenic vs Benign)
-            #   Stage 2: BioReason_protein_Stage2_GOF_LOF.csv (GOF vs LOF)
+            # 核心原则: 同一基因的所有变异必须在同一个集合中 (train/val/test)
+            # 这样模型无法靠"背基因名"作弊, 必须学习变异本身的特征
+            #
+            # 分层采样: 分别对纯GOF基因/纯LOF基因/混合基因做 8:1:1 分割
+            # 确保每个集合的基因类型分布一致, 评估更公平
+            # ═══════════════════════════════════════════════════════════════════
             stage = getattr(self.hparams, "stage", 1)
             if stage == 1:
                 data_file = "/gpfs/hpc/home/lijc/mapengtao/gof/data/processed/BioReason_protein_Stage1_Binary.csv"
             else:
                 data_file = "/gpfs/hpc/home/lijc/mapengtao/gof/data/processed/BioReason_protein_Stage2_GOF_LOF.csv"
             dataset = load_dataset("csv", data_files=data_file)
+            raw_data = dataset["train"]
 
-            # Step 2: 清洗 + 格式化
-            #   clean:           answer.strip() — 去掉首尾空格
-            #   get_format:      构建 prompt dict, 设置 reasoning_content
-            #                    ↓ 这里决定 <think> 里是什么内容 ↓
-            formatted = dataset.map(get_format_variant_effect_function(self.hparams.model_type), load_from_cache_file=False)
+            # Step 1: 从 question 文本中提取基因名
+            def _extract_gene(example):
+                q = example.get("question", "")
+                m = re.search(r"- Gene: (\S+)", q)
+                return {"_gene": m.group(1) if m else ""}
+            raw_data = raw_data.map(_extract_gene, load_from_cache_file=False)
 
-            # Step 3: 收集所有标签
-            raw_data = formatted["train"]
-            labels = [example["answer"] for example in raw_data]
+            # Step 2: 统计每个基因的标签种类 (用于分层)
+            gene_to_labels = defaultdict(set)
+            gene_to_type = {}
+            for example in raw_data:
+                gene = example.get("_gene", "")
+                if not gene:
+                    continue
+                ans = example.get("answer", "").strip().lower()
+                gene_to_labels[gene].add(ans)
+                gene_to_type[gene] = example.get("gene_type", "shared")
 
-            # Step 4: 分割 (Stage2 做基因感知分割)
-            stage = getattr(self.hparams, "stage", 1)
-            if stage == 2 and "gene_type" in raw_data.column_names:
-                # 分离: 共享基因(同源) vs LOF-only 基因
-                shared_data = raw_data.filter(lambda x: x["gene_type"] == "shared")
-                lof_only_data = raw_data.filter(lambda x: x["gene_type"] == "lof_only")
-                # val/test 只从共享基因中取，train 包含全部
-                split_1 = shared_data.train_test_split(test_size=0.2, seed=42)
-                split_2 = split_1["test"].train_test_split(test_size=0.5, seed=42)
-                if split == "train":
-                    raw = concatenate_datasets([split_1["train"], lof_only_data])
-                elif split == "val":
-                    raw = split_2["train"]
-                else:
-                    raw = split_2["test"]
+            # Step 3: 基因分类 (Stage 感知)
+            #   Stage 1: Pathogenic vs Benign  → answer="pathogenic"/"benign"
+            #   Stage 2: GOF vs LOF            → answer="gain-of-function"/"loss-of-function"
+            if stage == 1:
+                pure_path = []    # 只有 Pathogenic
+                pure_benign = []  # 只有 Benign
+                mixed_s1 = []     # 同时有 Pathogenic 和 Benign
+
+                for gene, labels in gene_to_labels.items():
+                    has_path = any("pathogenic" in l for l in labels)
+                    has_benign = any("benign" in l for l in labels)
+                    if has_path and not has_benign:
+                        pure_path.append(gene)
+                    elif has_benign and not has_path:
+                        pure_benign.append(gene)
+                    else:
+                        mixed_s1.append(gene)
+
+                buckets = [pure_path, pure_benign, mixed_s1]
             else:
-                # 原逻辑: 随机 80/10/10 分割
-                split_1 = raw_data.train_test_split(test_size=0.2, seed=42)
-                split_2 = split_1["test"].train_test_split(test_size=0.5, seed=42)
-                if split == "train":
-                    raw = split_1["train"]
-                elif split == "val":
-                    raw = split_2["train"]
-                else:
-                    raw = split_2["test"]
+                pure_gof = []
+                pure_lof = []
+                mixed_s2 = []
+                other_s2 = []
+
+                for gene, labels in gene_to_labels.items():
+                    has_gof = any("gain-of-function" in l for l in labels)
+                    has_lof = any("loss-of-function" in l for l in labels)
+                    if has_gof and not has_lof:
+                        pure_gof.append(gene)
+                    elif has_lof and not has_gof:
+                        pure_lof.append(gene)
+                    elif has_gof and has_lof:
+                        mixed_s2.append(gene)
+                    else:
+                        other_s2.append(gene)
+
+                buckets = [pure_gof, pure_lof, mixed_s2, other_s2]
+
+            # Step 4: 分层 8:1:1 分割
+            # 每个桶(pure/mixed)内独立分割, 保证各集合基因类型分布一致
+            # 基因级隔离已解决泄露问题(同基因不会跨集合), 纯基因在test也可接受
+            def _split_genes(gene_list):
+                genes = sorted(set(gene_list))
+                random.Random(42).shuffle(genes)
+                n = len(genes)
+                t_end = int(n * 0.8)
+                v_end = int(n * 0.9)
+                return genes[:t_end], genes[t_end:v_end], genes[v_end:]
+
+            train_genes, val_genes, test_genes = set(), set(), set()
+            for bucket in buckets:
+                t, v, te = _split_genes(bucket)
+                train_genes.update(t)
+                val_genes.update(v)
+                test_genes.update(te)
+
+            # Stage 2: lof_only 基因全部进 train, 不进 val/test
+            if stage == 2:
+                for gene, gtype in gene_to_type.items():
+                    if gtype == "lof_only":
+                        train_genes.add(gene)
+                        val_genes.discard(gene)
+                        test_genes.discard(gene)
+
+            # Step 5: 按基因集合过滤 + 格式化
+            if split == "train":
+                gene_set = train_genes
+            elif split == "val":
+                gene_set = val_genes
+            else:
+                gene_set = test_genes
+
+            raw = raw_data.filter(lambda x: x.get("_gene", "") in gene_set)
+            raw = raw.map(get_format_variant_effect_function(self.hparams.model_type), load_from_cache_file=False)
+            labels = [example["answer"] for example in raw]
 
         elif dtype == "variant_effect_non_snv":
             dataset = load_dataset(self.hparams.variant_effect_non_snv_data_dir_huggingface)

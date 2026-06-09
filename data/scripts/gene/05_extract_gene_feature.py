@@ -62,10 +62,14 @@ df = pd.merge(df_vep, df_labels[['ID', 'LABEL', 'REF', 'GENE_TYPE']], on='ID', h
 # --- 4. 锁定大模型专属“王牌特征” ---
 # 有些列如果在 VEP 里没跑出来，咱们也不报错，智能跳过
 TARGET_COLS = [
-    'ID', 'LABEL', 'Location', 'Allele', 'Gene', 'SYMBOL', 
-    'Consequence', 'DOMAINS', 'Amino_acids','Protein_position',
-    'AF', 'MAX_AF', 'AlphaMissense_score', 'CADD_phred', 
-    'GERP++_RS', 'phyloP100way_vertebrate'
+    'ID', 'LABEL', 'Location', 'Allele', 'Gene', 'SYMBOL',
+    'Consequence', 'DOMAINS', 'Amino_acids', 'Protein_position',
+    'AF', 'MAX_AF', 'AlphaMissense_score', 'CADD_phred',
+    'GERP++_RS', 'phyloP100way_vertebrate',
+    'MutPred_score',
+    'SpliceAI_pred_DS_AG', 'SpliceAI_pred_DS_AL',
+    'SpliceAI_pred_DS_DG', 'SpliceAI_pred_DS_DL',
+    'EXON'
 ]
 actual_cols = [col for col in TARGET_COLS if col in df.columns]
 extra_cols = ['REF'] if 'REF' not in actual_cols else []
@@ -73,11 +77,36 @@ if 'GENE_TYPE' in df.columns:
     extra_cols.append('GENE_TYPE')
 df = df[actual_cols + extra_cols].copy()
 
+# --- 4.5 衍生特征计算 ---
+# SpliceAI_DS_max: 取4个delta score的最大值
+spliceai_cols = ['SpliceAI_pred_DS_AG', 'SpliceAI_pred_DS_AL', 'SpliceAI_pred_DS_DG', 'SpliceAI_pred_DS_DL']
+available_spliceai = [c for c in spliceai_cols if c in df.columns]
+if available_spliceai:
+    for c in available_spliceai:
+        df[c] = pd.to_numeric(df[c], errors='coerce').fillna(0)
+    df['SpliceAI_DS_max'] = df[available_spliceai].max(axis=1)
+    df.drop(columns=available_spliceai, inplace=True)
+else:
+    df['SpliceAI_DS_max'] = 0.0
+
+# in_last_exon: 从EXON字段解析 (格式: "3/10")
+if 'EXON' in df.columns:
+    def _parse_in_last_exon(s):
+        try:
+            cur, total = str(s).strip().split('/')
+            return 1 if int(cur) == int(total) else 0
+        except (ValueError, AttributeError):
+            return 0
+    df['in_last_exon'] = df['EXON'].apply(_parse_in_last_exon)
+    df.drop(columns=['EXON'], inplace=True)
+else:
+    df['in_last_exon'] = 0
+
 # --- 5. 空值清洗 (防止模型作弊) ---
 print("🛡️ 正在清理特征空值，执行数值化转换...")
 df.replace('-', np.nan, inplace=True)
 
-score_cols = ['AlphaMissense_score', 'CADD_phred', 'GERP++_RS', 'phyloP100way_vertebrate', 'AF', 'MAX_AF']
+score_cols = ['AlphaMissense_score', 'CADD_phred', 'GERP++_RS', 'phyloP100way_vertebrate', 'AF', 'MAX_AF', 'MutPred_score', 'SpliceAI_DS_max']
 for col in score_cols:
     if col in df.columns:
         df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
@@ -140,9 +169,10 @@ df_final = df[(df['reference_sequence'] != "ERROR") & (df['variant_sequence'] !=
 # 整理一下列顺序，让表格更美观
 # 把漏掉的黄金列全部加回来！
 cols_order = [
-    'ID', 'LABEL', 'SYMBOL', 'Gene', 'Location', 'Allele', 
+    'ID', 'LABEL', 'SYMBOL', 'Gene', 'Location', 'Allele',
     'Consequence', 'Amino_acids', 'DOMAINS', 'Protein_position',
 ] + [c for c in score_cols if c in df_final.columns] + [
+    'in_last_exon',
     'reference_sequence', 'variant_sequence'
 ]
 

@@ -22,6 +22,6 @@ vep -i /gpfs/hpc/home/lijc/mapengtao/gof/data/processed/master_to_annotate.vcf \
     --fasta /gpfs/hpc/home/public/jclabadmin/fasta/Homo_sapiens_assembly38.fasta \
     --everything \
     --fork 8 \
-    --plugin dbNSFP,/gpfs/hpc/home/public/jclabadmin/data/vep/vep_110/dbNSFP4.7a_grch38.gz,REVEL_score,CADD_phred,AlphaMissense_score,GERP++_RS,phyloP100way_vertebrate
+    --plugin dbNSFP,/gpfs/hpc/home/public/jclabadmin/data/vep/vep_110/dbNSFP4.7a_grch38.gz,REVEL_score,CADD_phred,AlphaMissense_score,GERP++_RS,phyloP100way_vertebrate,MutPred_score,SpliceAI_pred_DS_AG,SpliceAI_pred_DS_AL,SpliceAI_pred_DS_DG,SpliceAI_pred_DS_DL
 
 echo "🎉 终极 VEP 数据特征库已全部构建完毕！"

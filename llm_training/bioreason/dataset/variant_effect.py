@@ -35,7 +35,7 @@ from typing import Any, Dict, List, Tuple
 
 # ==================== 格式化函数获取 ====================
 
-def get_format_variant_effect_function(model_name: str) -> Any:
+def get_format_variant_effect_function(model_name: str, is_sft: bool = True) -> Any:
     """
     获取Variant Effect数据的格式化函数
 
@@ -45,16 +45,19 @@ def get_format_variant_effect_function(model_name: str) -> Any:
 
     Args:
         model_name: 模型类型 ("llm" 或 "dna-llm")
+        is_sft:     是否为监督微调模式; False 时跳过 assistant 回复 (GRPO 用)
 
     Returns:
         格式化函数
     """
     if model_name.lower() == "llm":
-        return format_variant_effect_for_llm
+        fn = format_variant_effect_for_llm
     elif model_name.lower() == "dna-llm":
-        return format_variant_effect_for_dna_llm
+        fn = format_variant_effect_for_dna_llm
     else:
         raise ValueError(f"Unsupported model name: {model_name}")
+    from functools import partial
+    return partial(fn, is_sft=is_sft)
 
 
 # ==================== 数据清洗函数 ====================
@@ -108,13 +111,13 @@ def clean_variant_effect_non_snv_example(example: Dict[str, Any]) -> Dict[str, A
 
 # ==================== 数据格式化函数 ====================
 
-def format_variant_effect_for_dna_llm(example: Dict[str, Any]) -> Dict[str, Any]:
+def format_variant_effect_for_dna_llm(example: Dict[str, Any], is_sft: bool = True) -> Dict[str, Any]:
     """
     为DNA-LLM格式化Variant Effect数据
 
     将原始Variant Effect数据转换为对话格式:
     - 用户消息: 包含2个DNA序列(参考+变异) + 问题文本
-    - 助手消息: 包含答案 (用于SFT训练)
+    - 助手消息(is_sft=True时): 包含答案 (用于SFT训练)
 
     对话格式:
         User: [DNA] [DNA] [Question]
@@ -123,46 +126,51 @@ def format_variant_effect_for_dna_llm(example: Dict[str, Any]) -> Dict[str, Any]
     数据结构:
         prompt: [
             {"role": "user", "content": [dna, dna, text]},
-            {"role": "assistant", "content": [text]}
+            {"role": "assistant", "content": [text]}   # 仅 is_sft=True
         ]
         dna_sequences: [reference_sequence, variant_sequence]
         answer: 答案字符串
 
     Args:
         example: 原始Variant Effect数据示例
+        is_sft:  是否为SFT模式; False=GRPO模式(不含assistant回复)
 
     Returns:
         格式化后的数据字典
     """
-    return {
-        # 用户消息: 混合内容 (2个DNA序列 + 1个文本问题)
+    item = {
         "prompt": [
             {
                 "role": "user",
                 "content": [
-                    *({"type": "dna", "text": None} for _ in range(2)),  # 2个DNA占位符
-                    {"type": "text", "text": example["question"].strip()}, # 问题
-                ],
-            },
-            # 助手消息: 模型需要学习的回复
-            {
-                "role": "assistant",
-                "reasoning_content": f" {example['answer'].strip()}",  # 推理过程
-                "content": [
-                    {"type": "text", "text": f"Answer: {example['answer'].strip()}"},  # 最终答案
+                    *({"type": "dna", "text": None} for _ in range(2)),
+                    {"type": "text", "text": example["question"].strip()},
                 ],
             },
         ],
-        # DNA序列列表 (对应prompt中的DNA占位符)
         "dna_sequences": [
-            example["reference_sequence"],  # 参考序列
-            example["variant_sequence"],     # 变异序列
+            example["reference_sequence"],
+            example["variant_sequence"],
         ],
-        "answer": example["answer"].strip(),  # 答案
+        "answer": example["answer"].strip(),
     }
+    if is_sft:
+        reasoning = example.get("reasoning", "")
+        if reasoning and str(reasoning).strip():
+            assistant_text = str(reasoning).strip()
+        else:
+            assistant_text = f"Answer: {example['answer'].strip()}"
+
+        item["prompt"].append({
+            "role": "assistant",
+            "content": [
+                {"type": "text", "text": assistant_text},
+            ],
+        })
+    return item
 
 
-def format_variant_effect_for_llm(example: Dict[str, Any]) -> Dict[str, Any]:
+def format_variant_effect_for_llm(example: Dict[str, Any], is_sft: bool = True) -> Dict[str, Any]:
     """
     为纯LLM格式化Variant Effect数据
 
@@ -171,40 +179,39 @@ def format_variant_effect_for_llm(example: Dict[str, Any]) -> Dict[str, Any]:
     - 将DNA序列转为纯文本描述
     - dna_sequences 为空列表
 
-    对话格式:
-        User: Reference sequence: xxx\nVariant sequence: xxx\nQuestion: xxx
-        Assistant: Answer: xxx
-
     Args:
         example: 原始Variant Effect数据示例
+        is_sft:  是否为SFT模式; False=GRPO模式(不含assistant回复)
 
     Returns:
         格式化后的数据字典
     """
-    # 将DNA序列转为文本描述
     question = f"Reference sequence: {example['reference_sequence']}\nVariant sequence: {example['variant_sequence']}\nQuestion: {example['question']}"
 
-    return {
+    item = {
         "prompt": [
             {
                 "role": "user",
                 "content": [
-                    *({"type": "dna", "text": None} for _ in range(2)),  # 保留2个DNA占位符(虽然不用)
+                    *({"type": "dna", "text": None} for _ in range(2)),
                     {"type": "text", "text": question.strip()},
                 ],
             },
-            {
-                "role": "assistant",
-                "reasoning_content": f" {example['answer'].strip()}",
-                "content": [
-                    {"type": "text", "text": f"Answer: {example['answer'].strip()}"},
-                ],
-            },
         ],
-        # LLM模式: DNA序列为空
-        "dna_sequences": [
-            "",  # 参考序列为空
-            "",  # 变异序列为空
-        ],
+        "dna_sequences": ["", ""],
         "answer": example["answer"].strip(),
     }
+    if is_sft:
+        reasoning = example.get("reasoning", "")
+        if reasoning and str(reasoning).strip():
+            assistant_text = str(reasoning).strip()
+        else:
+            assistant_text = f"Answer: {example['answer'].strip()}"
+
+        item["prompt"].append({
+            "role": "assistant",
+            "content": [
+                {"type": "text", "text": assistant_text},
+            ],
+        })
+    return item

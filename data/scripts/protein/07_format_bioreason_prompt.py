@@ -32,7 +32,7 @@ STAGE = args.stage
 # ==========================================
 # 1. 路径配置
 # ==========================================
-INPUT_CSV  = "/gpfs/hpc/home/lijc/mapengtao/gof/data/processed/05_BIOREASON_with_Topology.csv"
+INPUT_CSV  = "/gpfs/hpc/home/lijc/mapengtao/gof/data/processed/06_BIOREASON_with_Biochem.csv"
 FEATURE_JSON = "/gpfs/hpc/home/lijc/mapengtao/gof/data/processed/feature_selection_result.json"
 
 if STAGE == 1:
@@ -150,6 +150,15 @@ for idx, row in df.iterrows():
     if aa_text:
         prompt_lines.append(f"- Amino acid change: {aa_text}")
 
+    if include("Protein_position"):
+        pp = safe_metric(row.get("Protein_position", ""))
+        if pp != "Unknown":
+            prompt_lines.append(f"- Protein position: {pp}")
+
+    if include("in_last_exon"):
+        in_last = int(row.get("in_last_exon", 0))
+        prompt_lines.append(f"- In last exon: {'Yes' if in_last == 1 else 'No'}")
+
     # --- 人群频率 (MAX_AF) ---
     if include("MAX_AF"):
         max_af = row.get("MAX_AF", row.get("AF", 0.0))
@@ -198,6 +207,23 @@ for idx, row in df.iterrows():
         cadd = safe_metric(row.get("CADD_phred"))
         if cadd != "Unknown":
             prompt_lines.append(f"- CADD phred: {cadd}")
+
+    if include("MutPred_score"):
+        if not has_path_pred:
+            prompt_lines.append("")
+            prompt_lines.append("## Computational Pathogenicity Prediction")
+            has_path_pred = True
+        mp = safe_metric(row.get("MutPred_score"))
+        if mp != "Unknown":
+            prompt_lines.append(f"- MutPred score: {mp}")
+
+    # --- 剪接预测 ---
+    if include("SpliceAI_DS_max"):
+        spliceai = safe_metric(row.get("SpliceAI_DS_max"))
+        if spliceai != "Unknown":
+            prompt_lines.append("")
+            prompt_lines.append("## Splicing Prediction")
+            prompt_lines.append(f"- SpliceAI max delta score: {spliceai}")
 
     # --- 基因级别约束 ---
     has_gene_constraint = False
@@ -262,6 +288,25 @@ for idx, row in df.iterrows():
     if include("Secondary_Structure"):
         ss = safe_metric(row.get("Secondary_Structure", ""))
         prompt_lines.append(f"- Secondary structure: {ss}")
+
+    # --- 生化特征 ---
+    has_biochem = False
+    if include("Isoelectric_diff"):
+        has_biochem = True
+        prompt_lines.append("")
+        prompt_lines.append("## Biochemical Properties")
+        iso = safe_metric(row.get("Isoelectric_diff"))
+        if iso != "Unknown":
+            prompt_lines.append(f"- Isoelectric point difference (|ΔpI|): {iso}")
+
+    if include("Molecular_weight"):
+        if not has_biochem:
+            prompt_lines.append("")
+            prompt_lines.append("## Biochemical Properties")
+            has_biochem = True
+        mw = safe_metric(row.get("Molecular_weight"))
+        if mw != "Unknown":
+            prompt_lines.append(f"- Molecular weight difference (|ΔMW|): {mw}")
 
     # --- 结尾指令 ---
     prompt_lines.append("")
