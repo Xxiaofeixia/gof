@@ -155,16 +155,11 @@ def format_variant_effect_for_dna_llm(example: Dict[str, Any], is_sft: bool = Tr
         "answer": example["answer"].strip(),
     }
     if is_sft:
-        reasoning = example.get("reasoning", "")
-        if reasoning and str(reasoning).strip():
-            assistant_text = str(reasoning).strip()
-        else:
-            assistant_text = f"Answer: {example['answer'].strip()}"
-
         item["prompt"].append({
             "role": "assistant",
+            "reasoning_content": f" {example['answer'].strip()}",
             "content": [
-                {"type": "text", "text": assistant_text},
+                {"type": "text", "text": f"Answer: {example['answer'].strip()}"},
             ],
         })
     return item
@@ -202,16 +197,11 @@ def format_variant_effect_for_llm(example: Dict[str, Any], is_sft: bool = True) 
         "answer": example["answer"].strip(),
     }
     if is_sft:
-        reasoning = example.get("reasoning", "")
-        if reasoning and str(reasoning).strip():
-            assistant_text = str(reasoning).strip()
-        else:
-            assistant_text = f"Answer: {example['answer'].strip()}"
-
         item["prompt"].append({
             "role": "assistant",
+            "reasoning_content": f" {example['answer'].strip()}",
             "content": [
-                {"type": "text", "text": assistant_text},
+                {"type": "text", "text": f"Answer: {example['answer'].strip()}"},
             ],
         })
     return item
