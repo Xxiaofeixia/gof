@@ -81,6 +81,13 @@ from transformers.utils import is_peft_available, is_datasets_available
 import torch.distributed.fsdp as _fsdp
 if not hasattr(_fsdp, 'FSDPModule'):
     _fsdp.FSDPModule = type('FSDPModule', (), {})
+
+# Monkey-patch: TRL >= 0.12 需要 transformers >= 4.46 的 is_trackio_available,
+# 服务器 transformers 版本较旧, 补一个返回 False 的 dummy.
+import transformers as _transformers
+if not hasattr(_transformers, 'is_trackio_available'):
+    _transformers.is_trackio_available = lambda: False
+
 from trl.models import prepare_deepspeed, unwrap_model_for_generation, prepare_fsdp
 from trl.models.utils import _ForwardRedirection
 from trl.trainer.grpo_config import GRPOConfig
