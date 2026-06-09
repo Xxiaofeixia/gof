@@ -76,6 +76,11 @@ from transformers import (
 from transformers.trainer_utils import seed_worker
 from transformers.utils import is_peft_available, is_datasets_available
 
+# Monkey-patch: TRL >= 0.12 需要 PyTorch >= 2.4 的 FSDPModule,
+# 服务器 PyTorch 较旧且使用 DeepSpeed (非 FSDP), 创建 dummy 绕过导入检查.
+import torch.distributed.fsdp as _fsdp
+if not hasattr(_fsdp, 'FSDPModule'):
+    _fsdp.FSDPModule = type('FSDPModule', (), {})
 from trl.models import prepare_deepspeed, unwrap_model_for_generation, prepare_fsdp
 from trl.models.utils import _ForwardRedirection
 from trl.trainer.grpo_config import GRPOConfig
