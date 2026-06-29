@@ -40,6 +40,7 @@ FEATURE_CONFIG = {
     "CADD_phred":                "continuous",
     "GERP++_RS":                 "continuous",
     "phyloP100way_vertebrate":   "continuous",
+    "pLI":                       "continuous",
     "Haploinsufficiency_Score":  "continuous",
     "AlphaFold_RSA":             "continuous",
     "ESM_DDG_Score":             "continuous",
@@ -49,7 +50,10 @@ FEATURE_CONFIG = {
     "MutPred_score":             "continuous",
     "Isoelectric_diff":          "continuous",
     "Molecular_weight":          "continuous",
+    "protein_truncation_percent": "continuous",
     "in_last_exon":              "categorical",
+    "NMD_predicted":             "categorical",
+    "Functional_Site_present":   "categorical",
     # 分类型特征
     "Consequence":               "categorical",
     "Inheritance_Pattern":       "categorical",
@@ -58,11 +62,31 @@ FEATURE_CONFIG = {
 }
 
 P_THRESHOLD = 0.05
+NO_SITE_PLACEHOLDER = "No annotated functional site at this position"
 
 
 def safe_numeric(series):
     """转为数值，非数值和 NaN 变为 NaN"""
     return pd.to_numeric(series, errors="coerce")
+
+
+def format_pvalue(value):
+    """打印 p 值；无法检验时显示 NA。"""
+    if value is None or pd.isna(value):
+        return "NA"
+    return f"{float(value):.4g}"
+
+
+def add_derived_features(df):
+    """为统计检验派生低维、可检验特征。"""
+    if "Functional_Site" in df.columns:
+        site = df["Functional_Site"].fillna(NO_SITE_PLACEHOLDER).astype(str).str.strip()
+        df["Functional_Site_present"] = np.where(
+            site.isin(["", "nan", "None", NO_SITE_PLACEHOLDER]),
+            "No",
+            "Yes",
+        )
+    return df
 
 
 def test_continuous(data_df, feature, group_a_mask, group_b_mask, group_a_name, group_b_name):
@@ -115,8 +139,8 @@ def test_categorical(data_df, feature, group_a_mask, group_b_mask, group_a_name,
 
     构建 2×K 列联表（行=分组, 列=特征类别），检验两组的类别分布是否有差异。
     """
-    a_labels = data_df.loc[group_a_mask, feature].fillna("Unknown")
-    b_labels = data_df.loc[group_b_mask, feature].fillna("Unknown")
+    a_labels = data_df.loc[group_a_mask, feature].fillna("Unknown").astype(str)
+    b_labels = data_df.loc[group_b_mask, feature].fillna("Unknown").astype(str)
 
     all_cats = sorted(set(a_labels.unique()) | set(b_labels.unique()))
     if len(all_cats) < 2:
@@ -175,6 +199,7 @@ def main():
     # 1. 读数据
     print(f"\n📂 读取: {INPUT_CSV}")
     df = pd.read_csv(INPUT_CSV, low_memory=False)
+    df = add_derived_features(df)
     print(f"   总样本: {len(df)}")
 
     # 2. 构建分组 mask
@@ -249,26 +274,26 @@ def main():
     print(f"\n🔴 阶段一 (Pathogenic vs Neutral) 显著特征 ({len(stage1_sig)}):")
     for f in stage1_sig:
         r = results["stage1"][f]
-        print(f"   ✅ {f}: p={r['p_value']:.4f}, "
+        print(f"   ✅ {f}: p={format_pvalue(r['p_value'])}, "
               f"Pathogenic median={r.get('median_A','N/A')}, "
               f"Neutral median={r.get('median_B','N/A')}")
 
     not_sig_s1 = [f for f in FEATURE_CONFIG if f not in stage1_sig and f in results["stage1"]]
     for f in not_sig_s1:
         r = results["stage1"][f]
-        print(f"   ❌ {f}: p={r['p_value']:.4f} {r.get('note','')}")
+        print(f"   ❌ {f}: p={format_pvalue(r['p_value'])} {r.get('note','')}")
 
     print(f"\n🔵 阶段二 (GOF vs LOF) 显著特征 ({len(stage2_sig)}):")
     for f in stage2_sig:
         r = results["stage2"][f]
-        print(f"   ✅ {f}: p={r['p_value']:.4f}, "
+        print(f"   ✅ {f}: p={format_pvalue(r['p_value'])}, "
               f"GOF median={r.get('median_A','N/A')}, "
               f"LOF median={r.get('median_B','N/A')}")
 
     not_sig_s2 = [f for f in FEATURE_CONFIG if f not in stage2_sig and f in results["stage2"]]
     for f in not_sig_s2:
         r = results["stage2"][f]
-        print(f"   ❌ {f}: p={r['p_value']:.4f} {r.get('note','')}")
+        print(f"   ❌ {f}: p={format_pvalue(r['p_value'])} {r.get('note','')}")
 
     print(f"\n📌 只在阶段一显著 ({len(only_stage1)}): {only_stage1 if only_stage1 else '无'}")
     print(f"📌 只在阶段二显著 ({len(only_stage2)}): {only_stage2 if only_stage2 else '无'}")
