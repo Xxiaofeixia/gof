@@ -26,3 +26,4 @@ model-weights/
 # Environment
 .env
 .venv/
+.codex_ssh/

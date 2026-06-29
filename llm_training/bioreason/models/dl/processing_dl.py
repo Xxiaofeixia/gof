@@ -1,24 +1,3 @@
-"""
-DLProcessor â€”â€” æ–‡æœ¬ + DNA åŒå¤„ç†å™¨ã€‚
-=============================================================================
-è¿™æ˜¯è¿æ¥æ•°æ®å’Œæ¨¡å‹çš„æ¡¥æ¢ã€‚å®ƒåŒæ—¶å¤„ç†:
-  1. æ–‡æœ¬: ç”¨ text_tokenizer (Qwen3 tokenizer) åˆ†è¯
-  2. DNAåºåˆ—: ç”¨ dna_tokenizer (NT/Evo2 tokenizer) åˆ†è¯
-
-å…³é”®æµç¨‹ (__call__):
-  è¾“å…¥: text=["DNA Sequence 1: <|dna_pad|> ..."], batch_dna_sequences=[["ATCG...", "GCTA..."]]
-  â”€â”€â–¶ Step 1: ç”¨ dna_tokenizer åˆ†è¯ DNA åºåˆ—
-  â”€â”€â–¶ Step 2: å°†æ–‡æœ¬ä¸­çš„ <|dna_pad|> å ä½ç¬¦æ›¿æ¢ä¸ºå®é™…æ•°é‡ä¸ªå ä½ç¬¦
-             (å› ä¸ºæ¯ä¸ªDNAåºåˆ—åˆ†è¯åçš„tokenæ•°é‡ä¸åŒ)
-  â”€â”€â–¶ Step 3: ç”¨ text_tokenizer åˆ†è¯æ–‡æœ¬
-  â”€â”€â–¶ è¾“å‡º: BatchFeature åŒ…å« input_ids, attention_mask, dna_tokenized, batch_idx_map
-
-æ¨¡å‹æ¨¡å¼å…¼å®¹:
-  - DNA-LLM æ¨¡å¼: dna_tokenizer æ­£å¸¸ä½¿ç”¨ï¼Œ<|dna_pad|> è¢«æ›¿æ¢
-  - LLM æ¨¡å¼: dna_tokenizer=Noneï¼Œ<|dna_pad|> è¢«ç›´æ¥åˆ é™¤ï¼ˆçº¯æ–‡æœ¬æ¨¡å¼ï¼‰
-=============================================================================
-"""
-
 from typing import List, Optional, Union, Dict, Any, Tuple
 
 import torch
@@ -34,15 +13,14 @@ from transformers.tokenization_utils_base import PreTokenizedInput, TextInput
 
 from bioreason.utils.dna_utils import DNAInput
 
-
 class DLDNAKwargs(CommonKwargs):
-    """DNA å¤„ç†çš„å…³é”®å­—å‚æ•°"""
+    """Keyword arguments specific to DNA processing"""
     max_length_text: Optional[int]
     max_length_dna: Optional[int]
 
 
 class DLProcessorKwargs(ProcessingKwargs, total=False):
-    """å¤„ç†å™¨å…³é”®å­—å‚æ•°"""
+    """Processing keyword arguments for the DL processor"""
     dna_kwargs: DLDNAKwargs
     _defaults = {
         "text_kwargs": {
@@ -50,15 +28,18 @@ class DLProcessorKwargs(ProcessingKwargs, total=False):
         },
     }
 
-
 class DLProcessor(ProcessorMixin):
-    """
-    åŒæ¨¡æ€å¤„ç†å™¨ï¼šåŒæ—¶å¤„ç†æ–‡æœ¬å’Œ DNA åºåˆ—ã€‚
+    r"""
+    Constructs a DL processor which wraps a NucleotideTransformer DNA processor and a Qwen2_5 tokenizer into a single processor.
+    This processor handles both text and DNA sequence processing to prepare inputs for the DNALLMModel.
 
     Args:
-        tokenizer:     æ–‡æœ¬åˆ†è¯å™¨ï¼ˆQwen3 tokenizerï¼‰
-        dna_tokenizer: DNA åˆ†è¯å™¨ï¼ˆNT tokenizer æˆ– Evo2 tokenizerï¼‰
-        chat_template: å¯¹è¯æ¨¡æ¿ï¼ˆJinja æ ¼å¼ï¼‰
+        tokenizer (PreTrainedTokenizerBase, *optional*):
+            The text tokenizer used for processing text inputs.
+        dna_tokenizer (PreTrainedTokenizerBase, *optional*):
+            The DNA tokenizer used for processing DNA sequences.
+        chat_template (`str`, *optional*):
+            A Jinja template for chat formatting. If None, will use the tokenizer's template.
     """
 
     attributes = ["tokenizer", "dna_tokenizer"]
@@ -72,26 +53,36 @@ class DLProcessor(ProcessorMixin):
     def __init__(
         self, tokenizer=None, dna_tokenizer=None, chat_template=None, **kwargs
     ):
+        """
+        Initialize the processor with text and DNA tokenizers.
+
+        Args:
+            tokenizer: Text tokenizer (usually from a language model)
+            dna_tokenizer: DNA tokenizer (usually from a DNA model)
+            chat_template: Template for formatting chat conversations
+            **kwargs: Additional arguments
+        """
         self.tokenizer = tokenizer
         self.dna_tokenizer = dna_tokenizer
 
-        # DNA å ä½ç¬¦ tokenï¼šæ–‡æœ¬ä¸­çš„ <|dna_pad|> ä¼šè¢«æ›¿æ¢ä¸º DNA embedding
         self.dna_token = (
             "<|dna_pad|>"
             if not hasattr(self.tokenizer, "dna_token")
             else self.tokenizer.dna_token
         )
 
+        # Get chat template from tokenizer if not provided
         if chat_template is None and hasattr(self.tokenizer, "chat_template"):
             chat_template = self.tokenizer.chat_template
 
-        # å…¼å®¹ dna_tokenizer=None çš„æƒ…å†µï¼ˆçº¯LLMæ¨¡å¼ï¼‰
+        # ©¤©¤ ¸Ä¶¯1£ºdna_tokenizer=None Ê±Ìø¹ı¸¸ÀàÀàĞÍ¼ì²é ©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤
         if dna_tokenizer is not None:
             super().__init__(tokenizer, dna_tokenizer, chat_template=chat_template)
         else:
             self.chat_template = chat_template
+        # ©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤
 
-        # GRPO trainer å¯èƒ½éœ€è¦è¿™ä¸ªå±æ€§
+        # The GRPO trainer might expect this to be set
         if not hasattr(self.tokenizer, 'pad_token') or self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
 
@@ -103,34 +94,39 @@ class DLProcessor(ProcessorMixin):
         device: str = "cuda",
     ) -> Dict[str, Any]:
         """
-        å¯¹ä¸€ä¸ª batch ä¸­æ‰€æœ‰çš„ DNA åºåˆ—è¿›è¡Œåˆ†è¯ã€‚
+        Tokenize a batch of DNA sequences.
 
-        è¾“å…¥æ ¼å¼: batch_dna_sequences = [
-            ["ATCG...", "GCTA..."],  # æ ·æœ¬0çš„ä¸¤æ¡DNAåºåˆ—ï¼ˆreference + variantï¼‰
-            ["CCGT...", "TAGC..."],  # æ ·æœ¬1çš„ä¸¤æ¡DNAåºåˆ—
-        ]
+        Args:
+            batch_dna_sequences: List of lists of DNA sequences per batch item
+            max_length: Maximum allowed length for DNA sequences
+            return_tensors: Return format for tensors ("pt" for PyTorch)
+            device: Device to place tensors on
 
-        è¾“å‡º:
-            dna_tokenized: tokenized åçš„ DNA åºåˆ—ï¼ˆåŒ…å« input_ids, attention_maskï¼‰
-            batch_idx_map: æ¯æ¡DNAåºåˆ—å±äºå“ªä¸ª batch item çš„æ˜ å°„ [0, 0, 1, 1, ...]
+        Returns:
+            Dict containing:
+                - dna_tokenized: The tokenized DNA sequences
+                - batch_idx_map: Mapping of which sequences belong to which batch item
         """
+        # Create a mapping to track which sequences belong to which batch item
         batch_idx_map = []
         all_sequences = []
 
-        # å±•å¼€æ‰€æœ‰DNAåºåˆ—ï¼Œè®°å½•æ¯æ¡å±äºå“ªä¸ªbatch item
+        # Flatten all sequences with batch tracking
         for batch_idx, dna_sequences in enumerate(batch_dna_sequences):
             for seq in dna_sequences:
                 all_sequences.append(seq)
                 batch_idx_map.append(batch_idx)
 
+        # If no sequences in the entire batch, return empty dict
         if not all_sequences:
             return {"dna_tokenized": None, "batch_idx_map": []}
 
-        # çº¯LLMæ¨¡å¼ï¼šdna_tokenizer=Noneï¼Œç›´æ¥è¿”å›ç©º
+        # ©¤©¤ ¸Ä¶¯2£º´¿LLMÄ£Ê½ dna_tokenizer=None Ê±Ö±½Ó·µ»Ø¿Õ ©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤
         if self.dna_tokenizer is None:
             return {"dna_tokenized": None, "batch_idx_map": []}
+        # ©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤
 
-        # DNA-LLMæ¨¡å¼ï¼šç”¨ dna_tokenizer åˆ†è¯æ‰€æœ‰DNAåºåˆ—
+        # Tokenize all sequences at once
         dna_tokenized = self.dna_tokenizer(
             all_sequences,
             padding=True,
@@ -158,14 +154,19 @@ class DLProcessor(ProcessorMixin):
         **kwargs: Unpack[DLProcessorKwargs],
     ) -> BatchFeature:
         """
-        å¤„ç†ä¸€ä¸ª batch çš„æ–‡æœ¬å’Œ DNA åºåˆ—ï¼Œç”Ÿæˆæ¨¡å‹è¾“å…¥ã€‚
+        Process text and DNA sequences for model input.
 
-        æ ¸å¿ƒé€»è¾‘:
-        1. åˆ†è¯ DNA åºåˆ—
-        2. å°†æ–‡æœ¬ä¸­çš„ <|dna_pad|> æ›¿æ¢ä¸ºæ­£ç¡®æ•°é‡çš„å ä½ç¬¦
-           ï¼ˆå› ä¸ºæ¯ä¸ªDNAåºåˆ—åˆ†è¯åäº§ç”Ÿçš„ token æ•°é‡ä¸åŒï¼‰
-        3. åˆ†è¯æ–‡æœ¬
-        4. è¿”å›åˆå¹¶åçš„ BatchFeature
+        Args:
+            batch_dna_sequences: List of lists of DNA sequences per batch item
+            text: Input text or list of texts
+            max_length_text: Maximum length for text sequences
+            max_length_dna: Maximum length for DNA sequences
+            return_tensors: Return format for tensors
+            device: Device to place tensors on
+            **kwargs: Additional processor keyword arguments
+
+        Returns:
+            BatchFeature with tokenized inputs for the model
         """
         output_kwargs = self._merge_kwargs(
             DLProcessorKwargs,
@@ -173,12 +174,14 @@ class DLProcessor(ProcessorMixin):
             **kwargs,
         )
 
+        # Ensure text is a list
         if not isinstance(text, list):
             text = [text]
 
+        # flattened_dna_sequences = [dna_sequence for dna_sequences in batch_dna_sequences for dna_sequence in dna_sequences]
         dna_inputs = {}
         if batch_dna_sequences is not None:
-            # Step 1: åˆ†è¯ DNA
+            # Tokenize DNA sequences
             dna_processing_result = self.tokenize_dna_sequences(
                 batch_dna_sequences,
                 max_length=max_length_dna,
@@ -186,41 +189,40 @@ class DLProcessor(ProcessorMixin):
                 device=device,
             )
 
+            # ©¤©¤ ¸Ä¶¯3£º¸ù¾İÊÇ·ñÓĞ dna_tokenized ·ÖÁ½ÖÖÄ£Ê½´¦Àí ©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤
             if dna_processing_result['dna_tokenized'] is not None:
-                # Step 2 (DNA-LLMæ¨¡å¼): æ›¿æ¢å ä½ç¬¦
-                # å…³é”®ï¼šæ¯ä¸ª <|dna_pad|> éœ€è¦æ›¿æ¢æˆ num_dna_tokens ä¸ªå ä½ç¬¦
-                # å› ä¸ºæ¯ä¸ªDNAåºåˆ—åˆ†è¯åçš„é•¿åº¦ä¸åŒ
+                # DNA-LLMÄ£Ê½£º°ÑÎÄ±¾ÖĞµÄ dna_token Ìæ»»Îª¶ÔÓ¦ÊıÁ¿µÄÕ¼Î»·û
                 index = 0
                 for i in range(len(text)):
                     while self.dna_token in text[i]:
-                        # è·å–å½“å‰DNAåºåˆ—åˆ†è¯åçš„å®é™…é•¿åº¦
+                        # ?? FIX: Ç¿ÖÆ×ª»»Îª int£¬·ÀÖ¹¸¡µãÊıµ¼ÖÂµÄ TypeError
                         num_dna_tokens = int(dna_processing_result['dna_tokenized']['attention_mask'][index].sum().item())
 
-                        # å…ˆç”¨ä¸´æ—¶å ä½ç¬¦æ›¿æ¢ï¼Œé¿å…æ— é™å¾ªç¯
                         text[i] = text[i].replace(
                             self.dna_token, "<|placeholder|>" * num_dna_tokens, 1
                         )
                         index += 1
-                    # æœ€ç»ˆæ›¿æ¢å› dna_token
                     text[i] = text[i].replace("<|placeholder|>", self.dna_token)
             else:
-                # Step 2 (çº¯LLMæ¨¡å¼): ç›´æ¥åˆ é™¤ <|dna_pad|>
+                # ´¿LLMÄ£Ê½£ºÇå³ıÎÄ±¾ÖĞËùÓĞ²ĞÁôµÄ dna_token£¨ÈçÓĞ£©
                 for i in range(len(text)):
                     text[i] = text[i].replace(self.dna_token, "")
+            # ©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤
 
+            # Add batch info to the output
             dna_inputs = {
+                # "batch_dna_sequences": batch_dna_sequences,
                 "dna_tokenized": dna_processing_result["dna_tokenized"],
                 "batch_idx_map": dna_processing_result["batch_idx_map"],
             }
 
-        # Step 3: åˆ†è¯æ–‡æœ¬
+        # Tokenize text
         text_kwargs = output_kwargs.get("text_kwargs", {})
 
         if 'padding' in text_kwargs:
             del text_kwargs['padding']
 
-        # æ–‡æœ¬æœ€å¤§é•¿åº¦ = max_length_text + 2 * max_length_dna
-        # ï¼ˆä¸ºDNAåºåˆ—çš„tokené¢„ç•™ç©ºé—´ï¼‰
+        # print("__call__ (processor):", text)
         text_inputs = self.tokenizer(
             text,
             max_length=max_length_text + 2 * max_length_dna,
@@ -230,15 +232,25 @@ class DLProcessor(ProcessorMixin):
             **text_kwargs,
         )
 
-        # Step 4: åˆå¹¶è¿”å›
+        # The BatchFeature should have all required fields for the model's forward pass
         return BatchFeature(data={**text_inputs, **dna_inputs})
 
     def batch_decode(self, *args, **kwargs) -> List[str]:
-        """æ‰¹é‡è§£ç ï¼ˆä»£ç†ç»™ tokenizerï¼‰"""
+        """
+        This method forwards all its arguments to the tokenizer's batch_decode.
+
+        Returns:
+            List of decoded strings
+        """
         return self.tokenizer.batch_decode(*args, **kwargs)
 
     def decode(self, *args, **kwargs) -> str:
-        """è§£ç å•ä¸ªåºåˆ—ï¼ˆä»£ç†ç»™ tokenizerï¼‰"""
+        """
+        This method forwards all its arguments to the tokenizer's decode.
+
+        Returns:
+            Decoded string
+        """
         return self.tokenizer.decode(*args, **kwargs)
 
     def post_process_dna_to_text(
@@ -247,7 +259,17 @@ class DLProcessor(ProcessorMixin):
         skip_special_tokens: bool = True,
         **kwargs,
     ) -> List[str]:
-        """åå¤„ç†ï¼šå°†ç”Ÿæˆçš„ token IDs è§£ç ä¸ºæ–‡æœ¬"""
+        """
+        Post-process the model output to decode the text.
+
+        Args:
+            generated_outputs: The token IDs generated by the model
+            skip_special_tokens: Whether to skip special tokens in the output
+            **kwargs: Additional arguments for the decoder
+
+        Returns:
+            List of decoded strings
+        """
         return self.tokenizer.batch_decode(
             generated_outputs,
             skip_special_tokens=skip_special_tokens,
@@ -256,7 +278,12 @@ class DLProcessor(ProcessorMixin):
 
     @property
     def model_input_names(self) -> List[str]:
-        """æ¨¡å‹æœŸæœ›çš„æ‰€æœ‰è¾“å…¥åç§°"""
+        """
+        Get the input names expected by the model.
+
+        Returns:
+            List of input names
+        """
         tokenizer_input_names = self.tokenizer.model_input_names
         dna_input_names = ["dna_tokenized", "batch_idx_map"]
 

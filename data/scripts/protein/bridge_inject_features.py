@@ -103,8 +103,7 @@ if 'MutPred_score' in df_vep.columns:
     mutpred_dict = dict(zip(df_vep['ID'], df_vep['MutPred_score'].apply(_parse_mutpred)))
 else:
     mutpred_dict = {}
-else:
-    mutpred_dict = {}
+
 
 # in_last_exon (from EXON field: "3/10")
 if 'EXON' in df_vep.columns:

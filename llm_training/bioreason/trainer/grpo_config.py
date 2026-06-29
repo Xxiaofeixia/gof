@@ -207,10 +207,10 @@ class DNALLMGRPOConfig(TrainingArguments):
         metadata={"help": "An optional descriptor for the run. Notably used for wandb logging."},
     )
     deepspeed: Optional[str] = field(
-        default="grpo_trainer_lora_model/ds_config_stage2.json",
+        default=None,
         metadata={"help": "Path to DeepSpeed configuration file."},
     )
-    
+
     # Parameters that control the data preprocessing
     # The default value remove_unused_columns is overwritten from the parent class, because in GRPO we usually rely on
     # additional columns to compute the reward

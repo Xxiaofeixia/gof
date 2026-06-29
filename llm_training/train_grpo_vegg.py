@@ -273,15 +273,18 @@ def _load_sft_checkpoint(model: DNALLMModel, ckpt_path: str, sft_lora_r: int, sf
     5. 如无 LoRA: 直接加载权重
     """
     print(f"Loading SFT checkpoint from {ckpt_path}")
-    checkpoint = torch.load(ckpt_path, map_location="cpu")
-
-    # 提取 state_dict
-    if "state_dict" in checkpoint:
-        raw_state = checkpoint["state_dict"]
-    elif "module" in checkpoint:
-        raw_state = checkpoint["module"]
+    if os.path.isdir(ckpt_path):
+        # DeepSpeed ZeRO checkpoint (sharded directory)
+        from deepspeed.utils.zero_to_fp32 import get_fp32_state_dict_from_zero_checkpoint
+        raw_state = get_fp32_state_dict_from_zero_checkpoint(ckpt_path)
     else:
-        raw_state = checkpoint
+        checkpoint = torch.load(ckpt_path, map_location="cpu")
+        if "state_dict" in checkpoint:
+            raw_state = checkpoint["state_dict"]
+        elif "module" in checkpoint:
+            raw_state = checkpoint["module"]
+        else:
+            raw_state = checkpoint
 
     # 去除 Lightning 的 "model." 前缀
     state_dict = {}

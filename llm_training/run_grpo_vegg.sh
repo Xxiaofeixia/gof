@@ -32,7 +32,7 @@ TEXT_MODEL="/gpfs/hpc/home/lijc/mapengtao/Bioreason/BioReason/pretrained_models/
 DNA_MODEL="/gpfs/hpc/home/lijc/mapengtao/Bioreason/BioReason/pretrained_models/evo2_1b_base"
 
 # SFT Checkpoints (你刚训练好的)
-SFT_STAGE1="/gpfs/hpc/home/lijc/mapengtao/gof/llm_training/checkpoints/nt-qwen-gof-lof-binary-variant_effect_coding-stage1-Qwen3-4B-20260608-105325/nt-qwen-gof-lof-binary-variant_effect_coding-stage1-Qwen3-4B-epoch=00-val_loss_epoch=nan.ckpt"
+SFT_STAGE1="/gpfs/hpc/home/lijc/mapengtao/gof/llm_training/checkpoints/nt-qwen-gof-lof-binary-variant_effect_coding-stage1-Qwen3-4B-20260613-165724/nt-qwen-gof-lof-binary-variant_effect_coding-stage1-Qwen3-4B-epoch=00-val_loss_epoch=nan.ckpt"
 SFT_STAGE2="/gpfs/hpc/home/lijc/mapengtao/gof/llm_training/checkpoints/nt-qwen-gof-lof-binary-variant_effect_coding-stage2-Qwen3-4B-20260608-152913/nt-qwen-gof-lof-binary-variant_effect_coding-stage2-Qwen3-4B-epoch=00-val_loss_epoch=nan.ckpt"
 
 OUTPUT_DIR="/gpfs/hpc/home/lijc/mapengtao/gof/llm_training/checkpoints"
@@ -47,7 +47,7 @@ echo "=========================================="
 # 参数说明:
 #   --sft_lora_r 64 --sft_lora_alpha 128:  匹配 SFT 的 LoRA 配置 (用于正确加载 checkpoint)
 #   --lora_r 16 --lora_alpha 32:           GRPO 阶段的 LoRA 配置 (比 SFT 小, 防止过拟合)
-#   --num_generations 8:                    每个 prompt 生成 8 个回复进行组内比较
+#   --num_generations 4:                    每个 prompt 生成 4 个回复进行组内比较 (降低显存)
 #   --max_completion_length 256:            回复最大 token 数 (分类任务不用太长)
 #   --temperature 0.9:                      采样温度 (较高温度 = 更多探索)
 #   --beta 0.04:                            KL 散度惩罚系数 (防止偏离 SFT 太远)
@@ -82,7 +82,7 @@ python -u train_grpo_vegg.py \
     --per_device_eval_batch_size 1 \
     --gradient_accumulation_steps 8 \
     --max_steps 500 \
-    --num_generations 8 \
+    --num_generations 4 \
     --max_completion_length 256 \
     --max_prompt_length 2048 \
     --temperature 0.9 \
@@ -95,12 +95,7 @@ python -u train_grpo_vegg.py \
     --loss_type dr_grpo \
     --scale_rewards group \
     --reward_funcs xmlcount soft_format strict_format concise correctness \
-    --use_vllm True \
-    --vllm_mode colocate \
-    --vllm_tensor_parallel_size 1 \
-    --vllm_gpu_memory_utilization 0.2 \
-    --vllm_enable_sleep_mode True \
-    --vllm_max_model_len 3000 \
+    --use_vllm False \
     --bf16 True \
     --gradient_checkpointing True \
     --save_strategy steps \
@@ -167,7 +162,7 @@ python -u train_grpo_vegg.py \
     --per_device_eval_batch_size 1 \
     --gradient_accumulation_steps 8 \
     --max_steps 500 \
-    --num_generations 8 \
+    --num_generations 4 \
     --max_completion_length 256 \
     --max_prompt_length 2048 \
     --temperature 0.9 \
@@ -180,12 +175,7 @@ python -u train_grpo_vegg.py \
     --loss_type dr_grpo \
     --scale_rewards group \
     --reward_funcs xmlcount soft_format strict_format concise correctness \
-    --use_vllm True \
-    --vllm_mode colocate \
-    --vllm_tensor_parallel_size 1 \
-    --vllm_gpu_memory_utilization 0.2 \
-    --vllm_enable_sleep_mode True \
-    --vllm_max_model_len 3000 \
+    --use_vllm False \
     --dna_embedding_layer 'blocks.20.mlp.l3' \
     --bf16 True \
     --gradient_checkpointing True \

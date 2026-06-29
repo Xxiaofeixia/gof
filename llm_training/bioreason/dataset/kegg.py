@@ -256,7 +256,7 @@ def qwen_dna_collate_fn(
         for start_pos in start_positions:
             valid_ends = [pos for pos in end_positions if pos > start_pos]
             if valid_ends:
-                end_pos = min(valid_ends)
+                end_pos = min(valid_ends) + im_end_marker_len  # 包含 <|im_end|>，让模型学会停止
                 if start_pos < end_pos:
                     assistant_sections.append((start_pos, end_pos))
             else:
@@ -273,7 +273,7 @@ def qwen_dna_collate_fn(
 
     batch["labels"] = labels
     valid_labels = (labels != -100).sum().item()
-    print(f"DEBUG: valid label tokens = {valid_labels}, total tokens = {labels.numel()}")
+
 
     # 如果需要返回原始答案
     if return_answer_in_batch:

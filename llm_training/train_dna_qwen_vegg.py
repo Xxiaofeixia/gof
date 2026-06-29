@@ -415,11 +415,12 @@ class DNALLMFineTuner(pl.LightningModule):
                             attention_mask=gen_attention_mask,
                             dna_tokenized=example_dna_data,
                             batch_idx_map=example_batch_map,
-                            max_new_tokens=200,
+                            max_new_tokens=800,
                             temperature=0.6,
                             top_p=0.95,
                             top_k=20,
                             do_sample=True,
+                            eos_token_id=self.tokenizer.eos_token_id,
                         )
 
                     # ── 解码并打印 ──
@@ -594,9 +595,9 @@ class DNALLMFineTuner(pl.LightningModule):
             # ═══════════════════════════════════════════════════════════════════
             stage = getattr(self.hparams, "stage", 1)
             if stage == 1:
-                data_file = "/gpfs/hpc/home/lijc/mapengtao/gof/data/processed/BioReason_protein_Stage1_Binary.csv"
+                data_file = "/gpfs/hpc/home/lijc/mapengtao/gof/data/processed/BioReason_protein_Stage1_Binary_Reasoning.csv"
             else:
-                data_file = "/gpfs/hpc/home/lijc/mapengtao/gof/data/processed/BioReason_protein_Stage2_GOF_LOF.csv"
+                data_file = "/gpfs/hpc/home/lijc/mapengtao/gof/data/processed/BioReason_protein_Stage2_GOF_LOF_Reasoning.csv"
             dataset = load_dataset("csv", data_files=data_file)
             raw_data = dataset["train"]
 
@@ -829,6 +830,8 @@ class DNALLMFineTuner(pl.LightningModule):
 
         total_examples = 0
         correct_count = 0
+        both_count = 0
+        truncated_count = 0
         processed_batches = 0
         generations = []  # 记录每条样本的生成结果
 
@@ -902,11 +905,12 @@ class DNALLMFineTuner(pl.LightningModule):
                         attention_mask=gen_attention_mask,
                         dna_tokenized=example_dna_data,
                         batch_idx_map=example_batch_map,
-                        max_new_tokens=200,
+                        max_new_tokens=800,
                         do_sample=True,
                         temperature=0.6,
                         top_p=0.95,
                         top_k=20,
+                        eos_token_id=self.tokenizer.eos_token_id,
                     )
 
                 user_input = self.tokenizer.decode(
@@ -917,21 +921,64 @@ class DNALLMFineTuner(pl.LightningModule):
                 ground_truth = answer[example_idx].strip()
 
                 # ── 准确率判断 ──
-                # 检查完整生成文本 (对齐原始BioReason逻辑)
+                # 只检查 </think> 之后的部分，避免 think 块中提及标签造成虚高
                 if ";" in ground_truth:
                     ground_truth = ground_truth.split(";")[0]
-                hit = ground_truth.lower() in generation.lower()
+
+                # 截断保护: 没生成出 </think> 说明被 max_new_tokens 截断了
+                if "</think>" in generation:
+                    answer_part = generation.split("</think>")[-1]
+                else:
+                    # 被截断，未能输出答案，整条算无效
+                    total_examples += 1
+                    examples_in_batch += 1
+                    truncated_count += 1
+                    prediction_category = "TRUNCATED"
+                    generations.append({
+                        "batch_idx": batch_idx,
+                        "example_idx": example_idx,
+                        "user_input": user_input,
+                        "generation": generation,
+                        "ground_truth": ground_truth,
+                        "correct": False,
+                        "prediction_category": "TRUNCATED",
+                    })
+                    torch.cuda.empty_cache()
+                    gc.collect()
+                    continue
+
+                answer_lower = answer_part.lower()
+                gt_lower = ground_truth.lower()
+
+                # 检测模型是否同时输出了两个互斥标签 → 无效预测
+                gof_keywords = ["gain-of-function", "gof"]
+                lof_keywords = ["loss-of-function", "lof"]
+                has_gof = any(kw in answer_lower for kw in gof_keywords)
+                has_lof = any(kw in answer_lower for kw in lof_keywords)
+                both_labels = has_gof and has_lof
+
+                if both_labels:
+                    # 同时输出 GOF 和 LOF → 模型在胡言乱语，不算正确
+                    hit = False
+                    prediction_category = "BOTH"
+                    both_count += 1
+                else:
+                    hit = gt_lower in answer_lower
+                    prediction_category = "correct" if hit else "wrong"
+
                 total_examples += 1
                 examples_in_batch += 1
                 if hit:
                     correct_count += 1
 
                 # ── 二分类指标 ──
-                prediction_category = "correct" if hit else "wrong"
                 if is_binary:
                     is_pos = ground_truth.lower() == pos_label.lower()
                     is_neg = ground_truth.lower() == neg_label.lower()
-                    if is_pos and hit:
+                    if both_labels:
+                        # 输出两个标签 → 无法判断，计入无效
+                        pass  # 不更新 TP/FP/TN/FN
+                    elif is_pos and hit:
                         true_positives += 1
                         prediction_category = "TP"
                     elif is_pos and not hit:
@@ -989,13 +1036,16 @@ class DNALLMFineTuner(pl.LightningModule):
                 "false_positives": false_positives,
                 "true_negatives": true_negatives,
                 "false_negatives": false_negatives,
+                "both_labels_count": both_count,
+                "truncated_count": truncated_count,
             })
             summary = (
                 f"Test Results:\n"
                 f"Total: {total_examples}  Accuracy: {accuracy:.4f}\n"
                 f"Precision: {precision:.4f}  Recall: {recall:.4f}  F1: {f1:.4f}\n"
                 f"TP={true_positives} FP={false_positives} "
-                f"TN={true_negatives} FN={false_negatives}"
+                f"TN={true_negatives} FN={false_negatives}\n"
+                f"BOTH: {both_count}  TRUNCATED: {truncated_count}"
             )
         else:
             # 多分类任务: 三个阶段评估

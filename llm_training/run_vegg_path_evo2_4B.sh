@@ -28,27 +28,27 @@ echo "========== 训练前 GPU 状态 =========="
 nvidia-smi
 echo "====================================="
 
-python train_dna_qwen_vegg.py \
-    --stage 1 \
-    --text_model_name $TEXT_MODEL \
-    --dna_model_name $DNA_MODEL \
-    --dna_is_evo2 True \
-    --dataset_type variant_effect_coding \
-    --wandb_project nt-qwen-gof-lof-binary \
-    --max_epochs 3 \
-    --batch_size 1 \
-    --num_gpus 1 \
-    --model_type dna-llm \
-    --max_length_dna 512 \
-    --max_length_text 2048\
-    --truncate_dna_per_side 256 \
-    --return_answer_in_batch True \
-    --num_workers 4 \
-    --gradient_accumulation_steps 16 \
-    --learning_rate 2e-5 \
-    --lora_rank 64 \
-    --lora_alpha 128 \
-    --strategy deepspeed_stage_2
+# python train_dna_qwen_vegg.py \
+#     --stage 1 \
+#     --text_model_name $TEXT_MODEL \
+#     --dna_model_name $DNA_MODEL \
+#     --dna_is_evo2 True \
+#     --dataset_type variant_effect_coding \
+#     --wandb_project nt-qwen-gof-lof-binary \
+#     --max_epochs 3 \
+#     --batch_size 1 \
+#     --num_gpus 1 \
+#     --model_type dna-llm \
+#     --max_length_dna 512 \
+#     --max_length_text 2048\
+#     --truncate_dna_per_side 256 \
+#     --return_answer_in_batch True \
+#     --num_workers 4 \
+#     --gradient_accumulation_steps 16 \
+#     --learning_rate 2e-5 \
+#     --lora_rank 64 \
+#     --lora_alpha 128 \
+#     --strategy deepspeed_stage_2
 
 # 阶段一提交完成后，自动提交阶段二
 sbatch --job-name=BioReason_S2 \

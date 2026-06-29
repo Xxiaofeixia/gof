@@ -119,12 +119,12 @@ class DNALLMModel(nn.Module):
             self.dna_config = self.dna_model.config
 
         else:
-            
+
             from vortex.model.model import StripedHyena
             from vortex.model.utils import dotdict
             import pkgutil
             import yaml
-        
+
             # �ֶ����� config
             config_path = "configs/evo2-1b-8k.yml"
 
@@ -134,7 +134,7 @@ class DNALLMModel(nn.Module):
             config.use_flash_attn = False
             config.use_flashfft = False
             config.use_flash_rmsnorm = False
-        
+
             # �ֶ�����ģ�Ͳ�����Ȩ��
             local_path = "/gpfs/hpc/home/lijc/mapengtao/Bioreason/BioReason/pretrained_models/evo2_1b_base/evo2_1b_base.pt"
             dna_backbone = StripedHyena(config)
@@ -145,12 +145,12 @@ class DNALLMModel(nn.Module):
             elif "state_dict" in state_dict:
                 state_dict = state_dict["state_dict"]
             dna_backbone.load_state_dict(state_dict, strict=False)
-        
+
             # �ҵ� dna_model �ϱ��ֽӿ�һ��
             self.dna_model = Evo2.__new__(Evo2)
             self.dna_model.model = dna_backbone
             self.dna_model.tokenizer = __import__("vortex.model.tokenizer", fromlist=["CharLevelTokenizer"]).CharLevelTokenizer(512)
-        
+
             self.dna_tokenizer = Evo2Tokenizer(self.dna_model.tokenizer)
             self.dna_config = config
             self.dna_embedding_layer = self.dna_embedding_layer
@@ -173,43 +173,43 @@ class DNALLMModel(nn.Module):
         batch_idx_map: List[int],
         batch_size: int,
     ) -> List[torch.Tensor]:
-    
+
         if self.dna_is_evo2:
             dna_device = next(self.dna_model.model.parameters()).device
             dna_tokenized = {
                 k: v.to(dna_device) if isinstance(v, torch.Tensor) else v
                 for k, v in dna_tokenized.items()
             }
-    
+
             hidden_states_list = []
             for seq_idx in range(len(dna_tokenized["input_ids"])):
                 input_ids = dna_tokenized["input_ids"][seq_idx:seq_idx+1]
-    
+
                 captured = {}
                 def hook_fn(m, i, o):
                     captured['out'] = o[0] if isinstance(o, tuple) else o
-    
+
                 last_block = self.dna_model.model.blocks[-1]
                 handle = last_block.register_forward_hook(hook_fn)
-    
+
 
                 with torch.no_grad(), torch.autocast(device_type=dna_device.type, dtype=torch.bfloat16):
                     self.dna_model.model.forward(input_ids)
-    
+
                 handle.remove()
                 seq_embeddings = captured['out'].squeeze(0).detach()
                 seq_embeddings = seq_embeddings.to(dtype=self.dna_projection.weight.dtype)
                 hidden_states_list.append(seq_embeddings)
-    
+
             hidden_states = torch.stack(hidden_states_list)
-    
+
         else:
             dna_device = next(self.dna_model.parameters()).device
             dna_tokenized = {
                 k: v.to(dna_device) if isinstance(v, torch.Tensor) else v
                 for k, v in dna_tokenized.items()
             }
-    
+
 
             with torch.no_grad(), torch.autocast(device_type=dna_device.type, dtype=torch.bfloat16):
                 outputs = self.dna_model(
@@ -218,14 +218,14 @@ class DNALLMModel(nn.Module):
                     output_hidden_states=True,
                 )
                 hidden_states = outputs.hidden_states[-1]
-    
+
         # Project all embeddings at once
         hidden_states = hidden_states.to(
             device=self.dna_projection.weight.device,
             dtype=self.dna_projection.weight.dtype
         )
         projected_states = self.dna_projection(hidden_states)
-    
+
         # Group embeddings by batch item
         result = [[] for _ in range(2 * batch_size)]
         for seq_idx, batch_idx in enumerate(batch_idx_map):
@@ -235,7 +235,7 @@ class DNALLMModel(nn.Module):
                 valid_length = dna_tokenized["attention_mask"][seq_idx].sum().item()
                 seq_embedding = projected_states[seq_idx, :valid_length]
             result[batch_idx].append(seq_embedding)
-    
+
         for i in range(2 * batch_size):
             if result[i]:
                 result[i] = torch.cat(result[i], dim=0)
@@ -245,7 +245,7 @@ class DNALLMModel(nn.Module):
                     device=self.dna_projection.weight.device,
                     dtype=self.dna_projection.weight.dtype
                 )
-    
+
         return result
 
     def forward(
@@ -316,15 +316,16 @@ class DNALLMModel(nn.Module):
         text_inputs_embeds = text_inputs_embeds.to(input_ids.device)
         attention_mask = attention_mask.to(input_ids.device)
         im_end_id = self.text_tokenizer.convert_tokens_to_ids("<|im_end|>")
-            # ��kwargs���Ƴ�eos_token_id�������ͻ
+        # 移除 TRL 特有参数，不能透传�?text_model.generate
         generation_kwargs.pop("eos_token_id", None)
+        generation_kwargs.pop("original_prompts", None)
 
         with torch.no_grad():
             outputs = self.text_model.generate(
                 inputs_embeds=text_inputs_embeds,
                 attention_mask=attention_mask,
-                repetition_penalty=1.3,       # ��������ͷ��ظ�
-                eos_token_id=[self.text_tokenizer.eos_token_id, im_end_id], 
+                repetition_penalty=1.0,       # 不惩罚已出现的token, 避免压制 <|im_end|>
+                eos_token_id=[self.text_tokenizer.eos_token_id, im_end_id],
                 pad_token_id=self.text_tokenizer.eos_token_id,
                 **generation_kwargs,
             )
@@ -344,9 +345,16 @@ class DNALLMModel(nn.Module):
 
         if use_reentrant:
             self.text_model.enable_input_require_grads()
-        
+
         print("gradient_checkpointing_enable for model:", self.text_model.is_gradient_checkpointing)
-    
+
+    @property
+    def is_gradient_checkpointing(self):
+        return self.text_model.is_gradient_checkpointing
+
+    def gradient_checkpointing_disable(self):
+        self.text_model.gradient_checkpointing_disable()
+
     def train(self, mode: bool = True):
         nn.Module.train(self, False)
         self.text_model.train(mode)
@@ -366,7 +374,7 @@ class DNALLMModel(nn.Module):
     ):
         if input_ids is None or attention_mask is None:
             raise ValueError("input_ids and attention_mask must be provided")
-    
+
         batch_size = input_ids.shape[0]
 
         text_inputs_embeds = self.text_model.get_input_embeddings()(input_ids)
@@ -380,7 +388,7 @@ class DNALLMModel(nn.Module):
 
             dna_embeds_flat = dna_embeds_flat.to(dtype=text_inputs_embeds.dtype, device=text_inputs_embeds.device)
             text_inputs_embeds[mask] = dna_embeds_flat
-        
+
         text_inputs_embeds = text_inputs_embeds.to(input_ids.device)
         attention_mask = attention_mask.to(input_ids.device)
 

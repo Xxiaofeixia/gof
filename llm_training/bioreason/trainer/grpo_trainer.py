@@ -94,7 +94,10 @@ from trl.trainer.grpo_config import GRPOConfig
 from trl.import_utils import is_liger_kernel_available, is_vllm_available
 
 from trl.extras.profiling import profiling_context, profiling_decorator
-from trl.extras.vllm_client import VLLMClient
+try:
+    from trl.extras.vllm_client import VLLMClient
+except (ImportError, ModuleNotFoundError):
+    VLLMClient = None
 
 from trl.trainer.callbacks import SyncRefModelCallback
 from trl.trainer.utils import (
@@ -352,7 +355,7 @@ class DNALLMGRPOTrainer(Trainer):
         self.beta = args.beta
         if self.beta == 0.0:
             self.ref_model = None
-        elif is_peft_model(model):
+        elif is_peft_model(model) or (hasattr(model, 'text_model') and is_peft_model(model.text_model)):
             self.ref_model = None
         else:
             config = AutoConfig.from_pretrained(model_id)

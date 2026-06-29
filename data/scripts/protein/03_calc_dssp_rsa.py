@@ -1,114 +1,174 @@
-import pandas as pd
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+第 03 步：用 AlphaFold PDB 和 DSSP 计算二级结构与相对溶剂可及性。
+
+输入：
+  data/processed/01_BIOREASON_with_DBs.csv
+  data/processed/uniprot_mapping.csv
+  data/processed/alphafold_pdbs/*.pdb
+
+输出：
+  data/processed/03_BIOREASON_with_RSA.csv
+
+实现要点：
+  1. 只对标准错义突变尝试提取蛋白结构特征。
+  2. 同一个 UniProt 只运行一次 DSSP，并缓存该蛋白所有残基的 SS/RSA。
+  3. 找不到结构、位置越界或 DSSP 失败时记为 Unknown，不中断整体流程。
+"""
+
+from __future__ import annotations
+
+import glob
 import os
 import re
-import glob
+from collections import Counter
+from typing import Any
+
+import pandas as pd
+from Bio import BiopythonWarning
 from Bio.PDB import PDBParser
 from Bio.PDB.DSSP import DSSP
 import warnings
-from Bio import BiopythonWarning
-warnings.simplefilter('ignore', BiopythonWarning)
 
-print("🚀 [Protein Pipeline 03] 启动 DSSP 3D 结构物理特征鉴定引擎...")
 
-# ==========================================
-# 1. 路径配置
-# ==========================================
+warnings.simplefilter("ignore", BiopythonWarning)
+
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 INPUT_CSV = os.path.join(BASE_DIR, "processed", "01_BIOREASON_with_DBs.csv")
 MAPPING_CSV = os.path.join(BASE_DIR, "processed", "uniprot_mapping.csv")
 PDB_DIR = os.path.join(BASE_DIR, "processed", "alphafold_pdbs")
 OUTPUT_CSV = os.path.join(BASE_DIR, "processed", "03_BIOREASON_with_RSA.csv")
 
-DSSP_BIN = "mkdssp"
+DSSP_BIN = "/gpfs/hpc/home/lijc/mapengtao/miniconda3/envs/dssp_env/bin/mkdssp"
 
-# ==========================================
-# 2. 加载大表与映射字典
-# ==========================================
-print("⏳ 正在加载基础数据与 UniProt 映射字典...")
-try:
-    df = pd.read_csv(INPUT_CSV, low_memory=False)
-    df_map = pd.read_csv(MAPPING_CSV)
-    uniprot_dict = {str(k).strip(): str(v).strip() for k, v in zip(df_map['SYMBOL'], df_map['UniProt_ID'])}
-except Exception as e:
-    print(f"❌ 致命错误：读取 CSV 失败，请检查路径。报错: {e}")
-    exit()
 
-# ==========================================
-# 3. 提取真实的氨基酸突变坐标与合法性校验
-# ==========================================
-pos_col = 'Protein_position' if 'Protein_position' in df.columns else 'Amino_acids'
-
-def extract_pos(x):
-    match = re.search(r'\d+', str(x))
+def extract_pos(value: Any) -> int | None:
+    match = re.search(r"\d+", str(value))
     return int(match.group()) if match else None
 
-# 🛡️ 核心安检：判断是不是标准的错义突变 (排除 *, -, 以及单字母)
-def is_valid_missense(aa):
-    aa_str = str(aa).strip()
-    if pd.isna(aa) or '*' in aa_str or aa_str == '-' or '/' not in aa_str:
+
+def is_valid_missense(value: Any) -> bool:
+    text = str(value).strip()
+    if pd.isna(value) or not text or text in {"-", "None", "nan"}:
+        return False
+    if "*" in text or "/" not in text:
         return False
     return True
 
-df['mut_pos'] = df[pos_col].apply(extract_pos)
-df['is_missense'] = df['Amino_acids'].apply(is_valid_missense)
 
-# ==========================================
-# 4. 离线 DSSP 计算核心函数
-# ==========================================
-def calculate_3d_offline(uid, pos):
-    if not uid or uid == 'nan' or pd.isna(pos): 
-        return "Unknown", "Unknown"
-    
-    search_pattern = os.path.join(PDB_DIR, f"AF-{uid}-F1-model_*.pdb")
-    matched_files = glob.glob(search_pattern)
-    if not matched_files: return "Unknown", "Unknown"
-    
-    pdb_file = matched_files[0] 
+def load_uniprot_mapping() -> dict[str, str]:
+    mapping_df = pd.read_csv(MAPPING_CSV, low_memory=False)
+    mapping: dict[str, str] = {}
+    for row in mapping_df.itertuples(index=False):
+        symbol = str(row.SYMBOL).strip()
+        uid = str(row.UniProt_ID).strip()
+        if symbol and uid and uid.lower() not in {"nan", "none", "-"}:
+            mapping[symbol] = uid
+    return mapping
+
+
+def find_pdb(uid: str) -> str | None:
+    matched = glob.glob(os.path.join(PDB_DIR, f"AF-{uid}-F1-model_*.pdb"))
+    return matched[0] if matched else None
+
+
+def build_dssp_cache(uid: str, counters: Counter) -> dict[int, tuple[str, float]] | None:
+    pdb_file = find_pdb(uid)
+    if not pdb_file:
+        counters["missing_pdb"] += 1
+        return None
     try:
-        p = PDBParser(QUIET=True)
-        structure = p.get_structure(uid, pdb_file)
-        dssp = DSSP(structure[0], pdb_file, dssp=DSSP_BIN) 
-        
+        parser = PDBParser(QUIET=True)
+        structure = parser.get_structure(uid, pdb_file)
+        dssp = DSSP(structure[0], pdb_file, dssp=DSSP_BIN)
+        residue_features: dict[int, tuple[str, float]] = {}
         for key in dssp.keys():
-            res_num = key[1][1] if isinstance(key[1], tuple) else key[1]
-            if res_num == pos:
-                return dssp[key][2], dssp[key][3] 
+            residue_id = key[1]
+            residue_number = residue_id[1] if isinstance(residue_id, tuple) else residue_id
+            residue_features[int(residue_number)] = (dssp[key][2], dssp[key][3])
+        counters["dssp_success"] += 1
+        return residue_features
     except Exception:
-        pass 
-    return "Unknown", "Unknown"
+        counters["dssp_failed"] += 1
+        return None
 
-# ==========================================
-# 5. 遍历计算
-# ==========================================
-print("🧬 开始调用 DSSP... (已开启智能跳过非错义突变功能)")
-ss_list, rsa_list = [], []
 
-for idx, row in df.iterrows():
-    if idx > 0 and idx % 200 == 0: 
-        print(f"   👉 进度: {idx}/{len(df)}...")
-    
-    # 🛡️ 如果不是错义突变，直接赋予 Unknown，不浪费算力去读取 PDB
-    if not row['is_missense']:
-        ss_list.append("Unknown")
-        rsa_list.append("Unknown")
-        continue
+def main() -> None:
+    print("启动第 03 步：DSSP 二级结构和 RSA 计算。", flush=True)
+    df = pd.read_csv(INPUT_CSV, low_memory=False)
+    uniprot_map = load_uniprot_mapping()
 
-    symbol = str(row['SYMBOL']).strip()
-    uid = uniprot_dict.get(symbol)
-    
-    ss, rsa = calculate_3d_offline(uid, row['mut_pos'])
-    ss_list.append(ss)
-    rsa_list.append(rsa)
+    pos_col = "Protein_position" if "Protein_position" in df.columns else "Amino_acids"
+    df["mut_pos_tmp"] = df[pos_col].map(extract_pos)
+    df["is_missense_tmp"] = df["Amino_acids"].map(is_valid_missense)
 
-# ==========================================
-# 6. 保存特征
-# ==========================================
-df['Secondary_Structure'] = ss_list
-df['AlphaFold_RSA'] = rsa_list
-# 清理临时列
-df.drop(columns=['mut_pos', 'is_missense'], inplace=True, errors='ignore') 
+    needed_symbols = sorted({
+        str(row.SYMBOL).strip()
+        for row in df[df["is_missense_tmp"]].itertuples(index=False)
+        if str(row.SYMBOL).strip()
+    })
+    needed_uids = sorted({
+        uniprot_map[symbol]
+        for symbol in needed_symbols
+        if symbol in uniprot_map
+    })
+    print(f"需要 DSSP 的 UniProt 数: {len(needed_uids)}", flush=True)
 
-df.to_csv(OUTPUT_CSV, index=False)
-print("\n" + "="*70)
-print("🏆 阶段 03 完美收官！3D 结构特征 (SS, RSA) 已成功注入！")
-print("="*70)
+    counters: Counter = Counter()
+    dssp_cache: dict[str, dict[int, tuple[str, float]] | None] = {}
+    for idx, uid in enumerate(needed_uids, start=1):
+        dssp_cache[uid] = build_dssp_cache(uid, counters)
+        if idx % 50 == 0 or idx == len(needed_uids):
+            print(f"DSSP 蛋白进度: {idx}/{len(needed_uids)}", flush=True)
+
+    secondary_structure: list[str] = []
+    rsa_values: list[str | float] = []
+    for idx, row in enumerate(df.itertuples(index=False), start=1):
+        if idx % 5000 == 0 or idx == len(df):
+            print(f"写回行进度: {idx}/{len(df)}", flush=True)
+
+        if not row.is_missense_tmp or pd.isna(row.mut_pos_tmp):
+            secondary_structure.append("Unknown")
+            rsa_values.append("Unknown")
+            counters["non_missense_or_no_position"] += 1
+            continue
+
+        uid = uniprot_map.get(str(row.SYMBOL).strip())
+        if not uid:
+            secondary_structure.append("Unknown")
+            rsa_values.append("Unknown")
+            counters["missing_uniprot"] += 1
+            continue
+
+        residue_features = dssp_cache.get(uid)
+        if not residue_features:
+            secondary_structure.append("Unknown")
+            rsa_values.append("Unknown")
+            continue
+
+        feature = residue_features.get(int(row.mut_pos_tmp))
+        if feature is None:
+            secondary_structure.append("Unknown")
+            rsa_values.append("Unknown")
+            counters["position_not_in_structure"] += 1
+            continue
+
+        ss, rsa = feature
+        secondary_structure.append(ss)
+        rsa_values.append(rsa)
+        counters["assigned"] += 1
+
+    df["Secondary_Structure"] = secondary_structure
+    df["AlphaFold_RSA"] = rsa_values
+    df.drop(columns=["mut_pos_tmp", "is_missense_tmp"], inplace=True, errors="ignore")
+    df.to_csv(OUTPUT_CSV, index=False)
+
+    print("第 03 步完成。统计如下:", flush=True)
+    for key, value in sorted(counters.items()):
+        print(f"  {key}: {value}", flush=True)
+    print(f"输出文件: {OUTPUT_CSV}", flush=True)
+
+
+if __name__ == "__main__":
+    main()
