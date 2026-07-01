@@ -84,6 +84,15 @@ def clean_variant_effect_example(example: Dict[str, Any]) -> Dict[str, Any]:
     return example
 
 
+def get_reasoning_text(example: Dict[str, Any]) -> str:
+    """优先使用第 10 步生成的扁平化 SFT 推理链，兼容旧版 reasoning 列。"""
+    for key in ("reasoning_sft", "reasoning"):
+        value = example.get(key, "")
+        if value and str(value).strip():
+            return str(value).strip()
+    return ""
+
+
 def clean_variant_effect_non_snv_example(example: Dict[str, Any]) -> Dict[str, Any]:
     """
     清洗 Non-SNV Variant Effect 示例的答案字段
@@ -155,11 +164,11 @@ def format_variant_effect_for_dna_llm(example: Dict[str, Any], is_sft: bool = Tr
         "answer": example["answer"].strip(),
     }
     if is_sft:
-        reasoning = example.get("reasoning", "")
-        if reasoning and str(reasoning).strip():
+        reasoning = get_reasoning_text(example)
+        if reasoning:
             item["prompt"].append({
                 "role": "assistant",
-                "reasoning_content": str(reasoning).strip(),
+                "reasoning_content": reasoning,
                 "content": [
                     {"type": "text", "text": f"Answer: {example['answer'].strip()}"},
                 ],
@@ -209,11 +218,11 @@ def format_variant_effect_for_llm(example: Dict[str, Any], is_sft: bool = True) 
         "answer": example["answer"].strip(),
     }
     if is_sft:
-        reasoning = example.get("reasoning", "")
-        if reasoning and str(reasoning).strip():
+        reasoning = get_reasoning_text(example)
+        if reasoning:
             item["prompt"].append({
                 "role": "assistant",
-                "reasoning_content": str(reasoning).strip(),
+                "reasoning_content": reasoning,
                 "content": [
                     {"type": "text", "text": f"Answer: {example['answer'].strip()}"},
                 ],

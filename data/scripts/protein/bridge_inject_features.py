@@ -193,4 +193,4 @@ for c in new_cols:
     print(f"   {status} {c}: 非零/非空={non_zero}")
 print(f"💾 保存至: {OUTPUT_CSV}")
 print("=" * 70)
-print("\n👉 下一步: python 00_statistical_feature_selection.py && python 07_format_bioreason_prompt.py --stage 2")
+print("\n👉 下一步: python 07_add_reasoning_context_features.py && python 08_statistical_feature_selection.py && python 09_format_bioreason_prompt.py --stage 2")

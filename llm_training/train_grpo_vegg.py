@@ -109,13 +109,23 @@ def load_variant_effect_for_grpo(
         {"train": Dataset, "val": Dataset, "test": Dataset}
     """
     if stage == 1:
-        data_file = "/gpfs/hpc/home/lijc/mapengtao/gof/data/processed/BioReason_protein_Stage1_Binary.csv"
+        data_file = "/gpfs/hpc/home/lijc/mapengtao/gof/data/processed/10_BioReason_protein_Stage1_Binary_Reasoning.csv"
     else:
-        data_file = "/gpfs/hpc/home/lijc/mapengtao/gof/data/processed/BioReason_protein_Stage2_GOF_LOF.csv"
+        data_file = "/gpfs/hpc/home/lijc/mapengtao/gof/data/processed/10_BioReason_protein_Stage2_GOF_LOF_Reasoning.csv"
 
     dataset = load_dataset("csv", data_files=data_file)
     raw_data = dataset["train"]
-    print(f"加载数据: {len(raw_data)} 条 (Stage {stage})")
+    before_filter = len(raw_data)
+    raw_data = raw_data.filter(
+        lambda x: x.get("reasoning_status", "") == "ok"
+        and bool(str(x.get("reasoning_sft") or "").strip()),
+        load_from_cache_file=False,
+    )
+    print(
+        f"加载第 10 步推理链数据: {len(raw_data)}/{before_filter} 条 (Stage {stage}) | {data_file}"
+    )
+    if len(raw_data) == 0:
+        raise ValueError(f"Stage {stage} 没有可训练的 reasoning_sft 样本，请先完成第 10 步 API 生成。")
 
     # Step 1: 提取基因名
     def _extract_gene(example):

@@ -99,19 +99,23 @@ run_python_step "protein 06 氨基酸生化特征" \
     "${PROCESSED_DIR}/protein_06_calc_biochemical_features.log"
 
 run_python_step "protein 06b UniProt/LOFTEE 推理上下文特征" \
-    "${PROTEIN_SCRIPT_DIR}" "06b_add_reasoning_context_features.py" \
-    "${PROCESSED_DIR}/protein_06b_add_reasoning_context_features.log"
+    "${PROTEIN_SCRIPT_DIR}" "07_add_reasoning_context_features.py" \
+    "${PROCESSED_DIR}/protein_07_add_reasoning_context_features.log"
 
 run_python_step "protein 00 两阶段显著性检验" \
-    "${PROTEIN_SCRIPT_DIR}" "00_statistical_feature_selection.py" \
-    "${PROCESSED_DIR}/protein_00_statistical_feature_selection.log"
+    "${PROTEIN_SCRIPT_DIR}" "08_statistical_feature_selection.py" \
+    "${PROCESSED_DIR}/protein_08_statistical_feature_selection.log"
 
 run_python_step "protein 07 阶段一 prompt" \
-    "${PROTEIN_SCRIPT_DIR}" "07_format_bioreason_prompt.py --stage 1" \
-    "${PROCESSED_DIR}/protein_07_stage1_format.log"
+    "${PROTEIN_SCRIPT_DIR}" "09_format_bioreason_prompt.py --stage 1" \
+    "${PROCESSED_DIR}/protein_09_stage1_format.log"
 
 run_python_step "protein 07 阶段二 prompt" \
-    "${PROTEIN_SCRIPT_DIR}" "07_format_bioreason_prompt.py --stage 2" \
-    "${PROCESSED_DIR}/protein_07_stage2_format.log"
+    "${PROTEIN_SCRIPT_DIR}" "09_format_bioreason_prompt.py --stage 2" \
+    "${PROCESSED_DIR}/protein_09_stage2_format.log"
+
+run_python_step "protein 09b reasoning sample" \
+    "${PROTEIN_SCRIPT_DIR}" "09b_sample_reasoning_input.py" \
+    "${PROCESSED_DIR}/protein_09b_sample_reasoning_input.log"
 
 log_step "流程完成。正式输出已覆盖到 data/processed。"

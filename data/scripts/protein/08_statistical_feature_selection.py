@@ -13,7 +13,7 @@
   - 分类型特征: Chi-squared test
 
 输出:
-  feature_selection_result.json — 每个阶段哪些特征 p<0.05
+  08_feature_selection_result.json — 每个阶段哪些特征 p<0.05
 """
 
 import json
@@ -28,8 +28,8 @@ warnings.filterwarnings("ignore")
 # ==========================================
 # 配置
 # ==========================================
-INPUT_CSV = "/gpfs/hpc/home/lijc/mapengtao/gof/data/processed/06_BIOREASON_with_Biochem.csv"
-OUTPUT_JSON = "/gpfs/hpc/home/lijc/mapengtao/gof/data/processed/feature_selection_result.json"
+INPUT_CSV = "/gpfs/hpc/home/lijc/mapengtao/gof/data/processed/07_BIOREASON_with_ReasoningContext.csv"
+OUTPUT_JSON = "/gpfs/hpc/home/lijc/mapengtao/gof/data/processed/08_feature_selection_result.json"
 
 # 要从 CSV 中检验的特征列及其类型
 #   "continuous": Mann-Whitney U
@@ -124,7 +124,7 @@ def test_continuous(data_df, feature, group_a_mask, group_b_mask, group_a_name, 
     return {
         "feature": feature,
         "p_value": float(p),
-        "significant": p < P_THRESHOLD,
+        "significant": bool(p < P_THRESHOLD),
         "median_A": float(a.median()),
         "median_B": float(b.median()),
         "n_A": len(a), "n_B": len(b),
@@ -181,7 +181,7 @@ def test_categorical(data_df, feature, group_a_mask, group_b_mask, group_a_name,
     return {
         "feature": feature,
         "p_value": float(p),
-        "significant": p < P_THRESHOLD,
+        "significant": bool(p < P_THRESHOLD),
         "n_A": len(a_labels), "n_B": len(b_labels),
         "categories": all_cats,
         "group_A_proportions": a_props,

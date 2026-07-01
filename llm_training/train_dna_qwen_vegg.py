@@ -595,11 +595,23 @@ class DNALLMFineTuner(pl.LightningModule):
             # ═══════════════════════════════════════════════════════════════════
             stage = getattr(self.hparams, "stage", 1)
             if stage == 1:
-                data_file = "/gpfs/hpc/home/lijc/mapengtao/gof/data/processed/BioReason_protein_Stage1_Binary_Reasoning.csv"
+                data_file = "/gpfs/hpc/home/lijc/mapengtao/gof/data/processed/10_BioReason_protein_Stage1_Binary_Reasoning.csv"
             else:
-                data_file = "/gpfs/hpc/home/lijc/mapengtao/gof/data/processed/BioReason_protein_Stage2_GOF_LOF_Reasoning.csv"
+                data_file = "/gpfs/hpc/home/lijc/mapengtao/gof/data/processed/10_BioReason_protein_Stage2_GOF_LOF_Reasoning.csv"
             dataset = load_dataset("csv", data_files=data_file)
             raw_data = dataset["train"]
+            before_filter = len(raw_data)
+            raw_data = raw_data.filter(
+                lambda x: x.get("reasoning_status", "") == "ok"
+                and bool(str(x.get("reasoning_sft") or "").strip()),
+                load_from_cache_file=False,
+            )
+            print(
+                f"Stage {stage} 使用第 10 步推理链数据: {data_file} | "
+                f"保留 reasoning_status=ok 且 reasoning_sft 非空样本 {len(raw_data)}/{before_filter}"
+            )
+            if len(raw_data) == 0:
+                raise ValueError(f"Stage {stage} 没有可训练的 reasoning_sft 样本，请先完成第 10 步 API 生成。")
 
             # Step 1: 从 question 文本中提取基因名
             def _extract_gene(example):

@@ -16,9 +16,9 @@ import random
 STAGE = int(sys.argv[1]) if len(sys.argv) > 1 else 1
 
 if STAGE == 1:
-    path = "/gpfs/hpc/home/lijc/mapengtao/gof/data/processed/BioReason_protein_Stage1_Binary.csv"
+    path = "/gpfs/hpc/home/lijc/mapengtao/gof/data/processed/09_BioReason_protein_Stage1_Binary.csv"
 else:
-    path = "/gpfs/hpc/home/lijc/mapengtao/gof/data/processed/BioReason_protein_Stage2_GOF_LOF.csv"
+    path = "/gpfs/hpc/home/lijc/mapengtao/gof/data/processed/09_BioReason_protein_Stage2_GOF_LOF.csv"
 
 df = pd.read_csv(path)
 print(f"=" * 70)

@@ -14,7 +14,7 @@
 输入：
   data/processed/01_target_genes.txt
   data/processed/01_pathogenic_variants_hg38.csv
-  /gpfs/hpc/home/public/jclabadmin/Penetrance_annotation/Penetrance_annotation1/Coding_region/gencode.v47.annotation.gtf.gz
+  /gpfs/hpc/home/public/jclabadmin/Pe6netrance_annotation/Penetrance_annotation1/Coding_region/gencode.v47.annotation.gtf.gz
   /gpfs/hpc/home/public/jclabadmin/annotation/af/hg38_gnomad41_exome.txt.gz
 
 输出：

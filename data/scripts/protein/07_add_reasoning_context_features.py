@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-第 06b 步：补充推理链构建所需的最小上下文特征。
+第 07 步：补充推理链构建所需的最小上下文特征。
 
 新增列：
   Gene_Normal_Function
@@ -14,7 +14,7 @@
   2. Gene_Normal_Function 和 Functional_Site 来自 UniProt reviewed 条目。
   3. NMD_predicted 只从 LOFTEE 注释解释，不再使用自写粗规则预测。
   4. protein_truncation_percent 从现有 VEP/蛋白位置注释派生。
-  4. 原地更新 06_BIOREASON_with_Biochem.csv，避免下游脚本路径发散。
+  4. 输出 07_BIOREASON_with_ReasoningContext.csv，使脚本编号和中间产物编号一致。
 """
 
 from __future__ import annotations
@@ -38,7 +38,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fil
 PROCESSED_DIR = os.path.join(BASE_DIR, "processed")
 
 INPUT_CSV = os.path.join(PROCESSED_DIR, "06_BIOREASON_with_Biochem.csv")
-OUTPUT_CSV = INPUT_CSV
+OUTPUT_CSV = os.path.join(PROCESSED_DIR, "07_BIOREASON_with_ReasoningContext.csv")
 MAPPING_CSV = os.path.join(PROCESSED_DIR, "uniprot_mapping.csv")
 CACHE_JSON = os.path.join(PROCESSED_DIR, "uniprot_reasoning_context_cache.json")
 GENE_FUNCTION_MAP_CSV = os.path.join(PROCESSED_DIR, "gene_function_map.csv")
@@ -258,7 +258,7 @@ def truncation_percent(row: pd.Series, protein_length: int | None) -> float:
 
 
 def main() -> None:
-    print("启动第 06b 步：补充推理链上下文特征。", flush=True)
+    print("启动第 07 步：补充推理链上下文特征。", flush=True)
     df = pd.read_csv(INPUT_CSV, low_memory=False)
     mapping = load_uniprot_mapping()
     cache = load_json(CACHE_JSON)
@@ -313,7 +313,7 @@ def main() -> None:
     )
     gene_function_map.to_csv(GENE_FUNCTION_MAP_CSV, index=False)
 
-    print("第 06b 步完成。新增特征统计:", flush=True)
+    print("第 07 步完成。新增特征统计:", flush=True)
     print(f"  Gene_Normal_Function known: {(df['Gene_Normal_Function'] != 'Function unknown').sum()}/{len(df)}", flush=True)
     print(f"  Functional_Site hit: {(df['Functional_Site'] != NO_SITE_PLACEHOLDER).sum()}/{len(df)}", flush=True)
     print("  NMD_predicted:", flush=True)

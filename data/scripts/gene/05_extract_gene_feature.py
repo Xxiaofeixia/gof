@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import io
 import os
+import re
 from typing import Any
 
 import numpy as np
@@ -164,7 +165,30 @@ def parse_in_last_exon(value: Any) -> int | float:
 
 
 def numeric_or_nan(series: pd.Series) -> pd.Series:
-    return pd.to_numeric(series.replace("-", np.nan), errors="coerce")
+    """解析 VEP/dbNSFP 数值列。
+
+    dbNSFP 对同一变异/转录本常输出逗号分隔的多个值，例如 "0.887,0.887"。
+    直接 pd.to_numeric 会把这种有效注释变成 NaN，因此这里逐项提取数值并取最大值。
+    对 CADD、AlphaMissense、MutPred、SpliceAI、保守性和频率列，最大值代表最强证据。
+    """
+    def parse_one(value: Any) -> float:
+        if value is None or pd.isna(value):
+            return np.nan
+        text = str(value).strip()
+        if text in {"", "-", ".", "None", "none", "nan", "NaN", "Unknown"}:
+            return np.nan
+        values: list[float] = []
+        for part in re.split(r"[,;&|]", text):
+            part = part.strip()
+            if not part or part in {"-", "."}:
+                continue
+            try:
+                values.append(float(part))
+            except ValueError:
+                continue
+        return max(values) if values else np.nan
+
+    return series.map(parse_one)
 
 
 def build_sequences(df: pd.DataFrame) -> pd.DataFrame:

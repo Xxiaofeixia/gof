@@ -27,3 +27,4 @@ model-weights/
 .env
 .venv/
 .codex_ssh/
+data/scripts/protein/api_key_env.sh
